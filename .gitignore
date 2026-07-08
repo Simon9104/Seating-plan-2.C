@@ -1,0 +1,10 @@
+node_modules
+dist
+.netlify
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+.env
+.env.local
+.DS_Store
