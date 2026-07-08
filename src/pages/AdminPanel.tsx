@@ -58,6 +58,7 @@ export default function AdminPanel({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const seatEls = useRef<Record<number, HTMLElement | null>>({});
   const [lines, setLines] = useState<Line[]>([]);
+  const rosterSaveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     api
@@ -69,7 +70,10 @@ export default function AdminPanel({
       .listAdmins()
       .then((r) => setAdmins(r.admins))
       .catch(() => {});
-    return () => clearTimeout(flashTimer.current);
+    return () => {
+      clearTimeout(flashTimer.current);
+      Object.values(rosterSaveTimers.current).forEach(clearTimeout);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -88,6 +92,29 @@ export default function AdminPanel({
     setFlash(true);
     clearTimeout(flashTimer.current);
     flashTimer.current = setTimeout(() => setFlash(false), 1200);
+  }
+
+  function handleRosterChange(index: number, value: string) {
+    // Show the keystroke immediately; the network save is debounced below so
+    // typing doesn't get overwritten by a slower in-flight request.
+    setState((prev) => (prev ? { ...prev, names: prev.names.map((n, i) => (i === index ? value : n)) } : prev));
+    clearTimeout(rosterSaveTimers.current[index]);
+    rosterSaveTimers.current[index] = setTimeout(() => saveRosterName(index, value), 500);
+  }
+
+  function flushRosterSave(index: number, value: string) {
+    clearTimeout(rosterSaveTimers.current[index]);
+    saveRosterName(index, value);
+  }
+
+  async function saveRosterName(index: number, value: string) {
+    try {
+      const next = await api.updateRoster(index, value);
+      setState(next);
+      setStatus('Saved to main chart');
+    } catch (err) {
+      setStatus(err instanceof ApiError ? err.message : 'Could not save that name.');
+    }
   }
 
   async function run(action: () => Promise<SeatingState>, message: string) {
@@ -253,7 +280,8 @@ export default function AdminPanel({
                 value={value}
                 disabled={state.rosterLocked}
                 placeholder="Name"
-                onChange={(e) => run(() => api.updateRoster(i, e.target.value), 'Saved to main chart')}
+                onChange={(e) => handleRosterChange(i, e.target.value)}
+                onBlur={(e) => flushRosterSave(i, e.target.value)}
                 style={rosterInputStyle}
               />
             </div>
