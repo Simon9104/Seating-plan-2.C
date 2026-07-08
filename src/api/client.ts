@@ -43,9 +43,10 @@ export const api = {
   me: () => request<LoginResult>('/auth/me'),
 
   getState: () => request<SeatingState>('/admin/state'),
-  updateRoster: (index: number, value: string) =>
-    request<SeatingState>('/admin/roster', { method: 'POST', body: JSON.stringify({ index, value }) }),
-  toggleLock: () => request<SeatingState>('/admin/roster/lock', { method: 'POST' }),
+  // Locking also saves `names` (the whole roster, sent as one batch instead
+  // of a request per keystroke). Omit `names` when unlocking.
+  toggleLock: (names?: string[]) =>
+    request<SeatingState>('/admin/roster/lock', { method: 'POST', body: JSON.stringify(names ? { names } : {}) }),
   shuffle: () => request<SeatingState>('/admin/shuffle', { method: 'POST' }),
   rotate: () => request<SeatingState>('/admin/rotate', { method: 'POST' }),
   clearHistory: () => request<SeatingState>('/admin/clear-history', { method: 'POST' }),

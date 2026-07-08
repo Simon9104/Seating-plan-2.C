@@ -191,23 +191,24 @@ export default async (req: Request, context: Context): Promise<Response> => {
         return json(200, adminStateView(state));
       }
 
-      if (path === '/admin/roster' && method === 'POST') {
-        const body = await readJson<{ index?: number; value?: string }>(req);
-        const index = body?.index;
-        if (typeof index !== 'number' || index < 0 || index >= 30) return json(400, { error: 'Invalid index.' });
-        const value = typeof body?.value === 'string' ? body.value.slice(0, 60) : '';
-        const state = await updateState(db, adminUsername, (s) => {
-          if (s.rosterLocked) return s;
-          const names = sanitizeNames(s.names);
-          names[index] = value;
-          return { ...s, names };
-        });
-        return json(200, adminStateView(state));
-      }
-
       if (path === '/admin/roster/lock' && method === 'POST') {
-        const state = await updateState(db, adminUsername, (s) => ({ ...s, rosterLocked: !s.rosterLocked }));
-        await logAction(db, adminUsername, state.rosterLocked ? 'roster_locked' : 'roster_unlocked', null, ip);
+        const body = await readJson<{ names?: string[] }>(req);
+        let willLock = false;
+        const state = await updateState(db, adminUsername, (s) => {
+          willLock = !s.rosterLocked;
+          // Names are only ever written here, as one batch, when locking —
+          // never per-keystroke — so an admin's typing is never raced
+          // against a slower in-flight save.
+          const names = willLock && Array.isArray(body?.names) ? sanitizeNames(body.names) : s.names;
+          return { ...s, names, rosterLocked: willLock };
+        });
+        await logAction(
+          db,
+          adminUsername,
+          state.rosterLocked ? 'roster_locked' : 'roster_unlocked',
+          state.rosterLocked ? `${state.names.filter(Boolean).length} names saved` : null,
+          ip
+        );
         return json(200, adminStateView(state));
       }
 

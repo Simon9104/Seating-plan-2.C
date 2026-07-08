@@ -58,7 +58,12 @@ export default function AdminPanel({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const seatEls = useRef<Record<number, HTMLElement | null>>({});
   const [lines, setLines] = useState<Line[]>([]);
-  const rosterSaveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+
+  // Roster names are edited as a local draft — nothing is sent to the server
+  // while typing. The draft is only saved (in one request) when the admin
+  // clicks "Lock roster", which also freezes the fields against further edits.
+  const [draftNames, setDraftNames] = useState<string[]>(new Array(30).fill(''));
+  const draftSeeded = useRef(false);
 
   useEffect(() => {
     api
@@ -70,12 +75,16 @@ export default function AdminPanel({
       .listAdmins()
       .then((r) => setAdmins(r.admins))
       .catch(() => {});
-    return () => {
-      clearTimeout(flashTimer.current);
-      Object.values(rosterSaveTimers.current).forEach(clearTimeout);
-    };
+    return () => clearTimeout(flashTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (state && !draftSeeded.current) {
+      setDraftNames(state.names);
+      draftSeeded.current = true;
+    }
+  }, [state]);
 
   function loadAudit(offset: number, replace: boolean) {
     api
@@ -94,26 +103,23 @@ export default function AdminPanel({
     flashTimer.current = setTimeout(() => setFlash(false), 1200);
   }
 
-  function handleRosterChange(index: number, value: string) {
-    // Show the keystroke immediately; the network save is debounced below so
-    // typing doesn't get overwritten by a slower in-flight request.
-    setState((prev) => (prev ? { ...prev, names: prev.names.map((n, i) => (i === index ? value : n)) } : prev));
-    clearTimeout(rosterSaveTimers.current[index]);
-    rosterSaveTimers.current[index] = setTimeout(() => saveRosterName(index, value), 500);
+  function handleDraftNameChange(index: number, value: string) {
+    setDraftNames((prev) => prev.map((n, i) => (i === index ? value : n)));
   }
 
-  function flushRosterSave(index: number, value: string) {
-    clearTimeout(rosterSaveTimers.current[index]);
-    saveRosterName(index, value);
-  }
-
-  async function saveRosterName(index: number, value: string) {
+  async function handleToggleLock() {
+    if (!state) return;
+    setBusy(true);
     try {
-      const next = await api.updateRoster(index, value);
+      const next = state.rosterLocked ? await api.toggleLock() : await api.toggleLock(draftNames);
       setState(next);
-      setStatus('Saved to main chart');
+      setDraftNames(next.names);
+      setStatus(next.rosterLocked ? 'Roster locked — names saved ✓' : 'Roster unlocked ✓');
+      loadAudit(0, true);
     } catch (err) {
-      setStatus(err instanceof ApiError ? err.message : 'Could not save that name.');
+      setStatus(err instanceof ApiError ? err.message : 'Something went wrong.');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -222,7 +228,7 @@ export default function AdminPanel({
     return <div style={{ padding: 40, fontFamily, color: colors.textMuted }}>Loading…</div>;
   }
 
-  const nameCount = state.names.filter(Boolean).length;
+  const nameCount = draftNames.filter(Boolean).length;
   const availableNames = state.names.filter((n) => n && state.rules.every((r) => r.name !== n));
   const pairNames = state.names.filter(Boolean);
   const watchOptions = state.names.filter(Boolean);
@@ -248,7 +254,8 @@ export default function AdminPanel({
             <div style={sectionLabelStyle}>Admin</div>
             <div style={{ fontSize: 22, fontWeight: 600 }}>Class Roster</div>
             <div style={{ fontSize: 13, color: colors.textMuted, marginTop: 6 }}>
-              Changes here update the main seating chart automatically. Students never see this page.
+              Type names, then click "Lock roster" to save them to the main seating chart. Students never see this
+              page.
             </div>
           </div>
         </div>
@@ -272,7 +279,7 @@ export default function AdminPanel({
             boxSizing: 'border-box'
           }}
         >
-          {state.names.map((value, i) => (
+          {draftNames.map((value, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 16, flexShrink: 0, color: colors.textFaint, fontSize: 12, textAlign: 'right' }}>{i + 1}</span>
               <input
@@ -280,19 +287,14 @@ export default function AdminPanel({
                 value={value}
                 disabled={state.rosterLocked}
                 placeholder="Name"
-                onChange={(e) => handleRosterChange(i, e.target.value)}
-                onBlur={(e) => flushRosterSave(i, e.target.value)}
+                onChange={(e) => handleDraftNameChange(i, e.target.value)}
                 style={rosterInputStyle}
               />
             </div>
           ))}
         </div>
 
-        <button
-          onClick={() => run(() => api.toggleLock(), state.rosterLocked ? 'Roster unlocked ✓' : 'Roster locked ✓')}
-          disabled={busy}
-          style={{ ...secondaryButtonStyle, background: state.rosterLocked ? colors.lockedBg : '#fff' }}
-        >
+        <button onClick={handleToggleLock} disabled={busy} style={{ ...secondaryButtonStyle, background: state.rosterLocked ? colors.lockedBg : '#fff' }}>
           {state.rosterLocked ? 'Unlock roster' : 'Lock roster'}
         </button>
         <div style={{ fontSize: 13, color: colors.textMuted }}>{nameCount} of 30 seats filled</div>

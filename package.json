@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "netlify dev",
-    "dev:local": "tsx scripts/dev-server.ts",
+    "dev:local": "tsx watch scripts/dev-server.ts",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview",
     "setup:admin": "node scripts/setup-admin.mjs",
