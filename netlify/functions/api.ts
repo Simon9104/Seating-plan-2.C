@@ -30,41 +30,53 @@ import {
   swapSeats,
   type SeatingState
 } from './lib/seating';
+import {
+  defaultRoomTimetableState,
+  defaultTimetableState,
+  newlyHomeSlots,
+  sanitizeEarlyPeriod,
+  sanitizeGrid,
+  sanitizeGroupsGrid,
+  sanitizeHomeGrid,
+  sanitizePeriods,
+  sanitizeRoomGrid,
+  sanitizeSplitGrid,
+  sanitizeSubjectTeachers
+} from './lib/timetable';
+import { loadSingletonState, updateSingletonState } from './lib/singleton-state';
+import type { RoomTimetableState, TimetableState } from '../../shared/types';
 import { buildClearSessionCookie, buildSessionCookie, clientIp, json, noContent, parseCookies, SESSION_COOKIE } from './lib/http';
 
-const MAX_RETRIES = 5;
-
-async function loadState(db: Client): Promise<{ state: SeatingState; version: number }> {
-  const res = await db.execute('SELECT data, version FROM seating_state WHERE id = 1');
-  const row = res.rows[0] as unknown as { data: string; version: number } | undefined;
-  if (!row) {
-    const fresh = emptyState();
-    await db.execute({
-      sql: 'INSERT INTO seating_state (id, data, version) VALUES (1, ?, 0)',
-      args: [JSON.stringify(fresh)]
-    });
-    return { state: fresh, version: 0 };
-  }
-  return { state: JSON.parse(row.data) as SeatingState, version: row.version };
+async function loadState(db: Client) {
+  return loadSingletonState(db, 'seating_state', emptyState);
+}
+async function updateState(db: Client, adminUsername: string, mutator: (s: SeatingState) => SeatingState) {
+  return updateSingletonState(db, 'seating_state', adminUsername, emptyState, mutator);
 }
 
-async function updateState(
-  db: Client,
-  adminUsername: string,
-  mutator: (state: SeatingState) => SeatingState
-): Promise<SeatingState> {
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    const { state, version } = await loadState(db);
-    const next = mutator(state);
-    const res = await db.execute({
-      sql: `UPDATE seating_state SET data = ?, version = version + 1, updated_at = datetime('now'), updated_by = ?
-            WHERE id = 1 AND version = ?`,
-      args: [JSON.stringify(next), adminUsername, version]
-    });
-    if (Number(res.rowsAffected) > 0) return next;
-  }
-  throw new Error('Could not save seating state after several attempts (concurrent updates) — try again.');
+async function loadTimetable(db: Client) {
+  return loadSingletonState(db, 'timetable_state', defaultTimetableState);
 }
+async function updateTimetable(db: Client, adminUsername: string, mutator: (s: TimetableState) => TimetableState) {
+  return updateSingletonState(db, 'timetable_state', adminUsername, defaultTimetableState, mutator);
+}
+
+async function loadRoomTimetable(db: Client) {
+  return loadSingletonState(db, 'room_timetable_state', defaultRoomTimetableState);
+}
+async function updateRoomTimetable(db: Client, adminUsername: string, mutator: (s: RoomTimetableState) => RoomTimetableState) {
+  return updateSingletonState(db, 'room_timetable_state', adminUsername, defaultRoomTimetableState, mutator);
+}
+
+const TIMETABLE_FIELD_LABELS: Record<string, string> = {
+  periods: 'periods',
+  grid: 'subjects',
+  splitGrid: 'split periods',
+  groupsGrid: 'groups',
+  earlyPeriod: 'early period',
+  homeGrid: 'home room',
+  subjectTeachers: 'subjects & teachers'
+};
 
 interface AuthedRequest {
   adminUsername: string;
@@ -127,6 +139,16 @@ export default async (req: Request, context: Context): Promise<Response> => {
     if (path === '/seating' && method === 'GET') {
       const { state } = await loadState(db);
       return json(200, publicSeatingView(state));
+    }
+
+    if (path === '/timetable' && method === 'GET') {
+      const { state } = await loadTimetable(db);
+      return json(200, state);
+    }
+
+    if (path === '/room-timetable' && method === 'GET') {
+      const { state } = await loadRoomTimetable(db);
+      return json(200, state);
     }
 
     // ---- Auth ----
@@ -385,6 +407,91 @@ export default async (req: Request, context: Context): Promise<Response> => {
         await db.execute({ sql: 'DELETE FROM admins WHERE username = ?', args: [target] });
         await logAction(db, adminUsername, 'remove_admin', target, ip);
         return noContent(204);
+      }
+
+      if (path === '/admin/timetable' && method === 'POST') {
+        const body = await readJson<Partial<TimetableState>>(req);
+        if (!body || typeof body !== 'object') return json(400, { error: 'Invalid request body.' });
+
+        const before = (await loadTimetable(db)).state;
+        const state = await updateTimetable(db, adminUsername, (s) => {
+          const next: TimetableState = { ...s };
+          if (body.periods !== undefined) next.periods = sanitizePeriods(body.periods, s.periods);
+          if (body.grid !== undefined) next.grid = sanitizeGrid(body.grid, s.grid);
+          if (body.splitGrid !== undefined) next.splitGrid = sanitizeSplitGrid(body.splitGrid, s.splitGrid);
+          if (body.groupsGrid !== undefined) next.groupsGrid = sanitizeGroupsGrid(body.groupsGrid, s.groupsGrid);
+          if (body.earlyPeriod !== undefined) next.earlyPeriod = sanitizeEarlyPeriod(body.earlyPeriod, s.earlyPeriod);
+          if (body.homeGrid !== undefined) next.homeGrid = sanitizeHomeGrid(body.homeGrid, s.homeGrid);
+          if (body.subjectTeachers !== undefined) next.subjectTeachers = sanitizeSubjectTeachers(body.subjectTeachers, s.subjectTeachers);
+          return next;
+        });
+
+        // Marking a slot "home class here" should clear any stale room-timetable
+        // override for that slot, so the public display falls back to this
+        // subject instead of showing a visiting class that's no longer accurate.
+        // Only slots that just flipped false -> true are touched, so unrelated
+        // room overrides survive a save that didn't change them.
+        if (body.homeGrid !== undefined) {
+          const slots = newlyHomeSlots(before.homeGrid, state.homeGrid);
+          if (slots.length) {
+            await updateRoomTimetable(db, adminUsername, (rs) => {
+              let touched = false;
+              const grid = { ...rs.grid };
+              slots.forEach(({ day, index }) => {
+                if (grid[day][index]) {
+                  touched = true;
+                  grid[day] = grid[day].slice();
+                  grid[day][index] = '';
+                }
+              });
+              return touched ? { ...rs, grid } : rs;
+            });
+          }
+        }
+
+        const details = Object.keys(body)
+          .filter((k) => TIMETABLE_FIELD_LABELS[k])
+          .filter((k) => JSON.stringify(before[k as keyof TimetableState]) !== JSON.stringify(state[k as keyof TimetableState]))
+          .map((k) => TIMETABLE_FIELD_LABELS[k])
+          .join(', ');
+        if (details) await logAction(db, adminUsername, 'update_timetable', details, ip);
+        return json(200, state);
+      }
+
+      if (path === '/admin/timetable/subjects' && method === 'POST') {
+        const body = await readJson<{ subject?: string; teacher?: string }>(req);
+        const subject = (body?.subject || '').trim().slice(0, 60);
+        const teacher = (body?.teacher || '').trim().slice(0, 60);
+        if (!subject || !teacher) return json(400, { error: 'Subject and teacher are required.' });
+        const state = await updateTimetable(db, adminUsername, (s) => ({
+          ...s,
+          subjectTeachers: { ...s.subjectTeachers, [subject]: teacher }
+        }));
+        await logAction(db, adminUsername, 'add_subject', `${subject} (${teacher})`, ip);
+        return json(200, state);
+      }
+
+      const subjectDeleteMatch = path.match(/^\/admin\/timetable\/subjects\/(.+)$/);
+      if (subjectDeleteMatch && method === 'DELETE') {
+        const subject = decodeURIComponent(subjectDeleteMatch[1]).slice(0, 60);
+        const state = await updateTimetable(db, adminUsername, (s) => {
+          if (!(subject in s.subjectTeachers)) return s;
+          const subjectTeachers = { ...s.subjectTeachers };
+          delete subjectTeachers[subject];
+          return { ...s, subjectTeachers };
+        });
+        await logAction(db, adminUsername, 'remove_subject', subject, ip);
+        return json(200, state);
+      }
+
+      if (path === '/admin/room-timetable' && method === 'POST') {
+        const body = await readJson<Partial<RoomTimetableState>>(req);
+        if (!body || typeof body !== 'object') return json(400, { error: 'Invalid request body.' });
+        const state = await updateRoomTimetable(db, adminUsername, (s) =>
+          body.grid !== undefined ? { ...s, grid: sanitizeRoomGrid(body.grid, s.grid) } : s
+        );
+        await logAction(db, adminUsername, 'update_room_timetable', null, ip);
+        return json(200, state);
       }
     }
 

@@ -1,4 +1,4 @@
-import type { AdminSummary, AuditEntry, PublicSeating, SeatingState } from '../../shared/types';
+import type { AdminSummary, AuditEntry, PublicSeating, RoomTimetableState, SeatingState, TimetableState } from '../../shared/types';
 
 export class ApiError extends Error {
   status: number;
@@ -68,5 +68,17 @@ export const api = {
   createAdmin: (payload: { username: string; displayName: string; password: string; currentPassword: string }) =>
     request<{ ok: true }>('/admin/admins', { method: 'POST', body: JSON.stringify(payload) }),
   removeAdmin: (username: string) =>
-    request<void>(`/admin/admins/${encodeURIComponent(username)}`, { method: 'DELETE' })
+    request<void>(`/admin/admins/${encodeURIComponent(username)}`, { method: 'DELETE' }),
+
+  getTimetable: () => request<TimetableState>('/timetable'),
+  saveTimetable: (patch: Partial<TimetableState>) =>
+    request<TimetableState>('/admin/timetable', { method: 'POST', body: JSON.stringify(patch) }),
+  addSubject: (subject: string, teacher: string) =>
+    request<TimetableState>('/admin/timetable/subjects', { method: 'POST', body: JSON.stringify({ subject, teacher }) }),
+  removeSubject: (subject: string) =>
+    request<TimetableState>(`/admin/timetable/subjects/${encodeURIComponent(subject)}`, { method: 'DELETE' }),
+
+  getRoomTimetable: () => request<RoomTimetableState>('/room-timetable'),
+  saveRoomTimetable: (grid: RoomTimetableState['grid']) =>
+    request<RoomTimetableState>('/admin/room-timetable', { method: 'POST', body: JSON.stringify({ grid }) })
 };

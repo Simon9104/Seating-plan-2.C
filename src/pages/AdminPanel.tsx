@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import { colors, fontFamily } from '../theme';
 import type { AdminSummary, AuditEntry, SeatingState } from '../../shared/types';
@@ -64,6 +64,12 @@ export default function AdminPanel({
   // clicks "Lock roster", which also freezes the fields against further edits.
   const [draftNames, setDraftNames] = useState<string[]>(new Array(30).fill(''));
   const draftSeeded = useRef(false);
+
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const clock = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(clock);
+  }, []);
 
   useEffect(() => {
     api
@@ -243,16 +249,21 @@ export default function AdminPanel({
         fontFamily,
         color: colors.text,
         display: 'flex',
-        gap: 32,
+        flexDirection: 'column',
+        gap: 24,
         padding: 40,
         boxSizing: 'border-box'
       }}
     >
+      <div style={{ display: 'flex', gap: 32, width: '100%' }}>
       <div style={{ width: 280, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
           <div>
             <div style={sectionLabelStyle}>Admin</div>
             <div style={{ fontSize: 22, fontWeight: 600 }}>Class Roster</div>
+            <div style={{ fontSize: 13, color: colors.textMuted, marginTop: 6, fontVariantNumeric: 'tabular-nums' }}>
+              {now.toLocaleTimeString('en-GB')}
+            </div>
             <div style={{ fontSize: 13, color: colors.textMuted, marginTop: 6 }}>
               Type names, then click "Lock roster" to save them to the main seating chart. Students never see this
               page.
@@ -599,6 +610,13 @@ export default function AdminPanel({
             </select>
           </div>
         </div>
+      </div>
+      </div>
+
+      <div style={{ textAlign: 'right' }}>
+        <Link to="/admin/timetable" style={{ fontSize: 13, color: colors.rotateBlue, textDecoration: 'none' }}>
+          Manage weekly timetable →
+        </Link>
       </div>
     </div>
   );

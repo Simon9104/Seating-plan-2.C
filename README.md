@@ -1,12 +1,21 @@
 # Class Seating Chart
 
-A classroom seating-plan app with:
+A classroom seating-plan + timetable app with:
 
-- A **public page** (`/`) students visit to see the current seating chart.
+- A **public page** (`/`) students visit to see the current seating chart,
+  plus a live clock and a "Now / Next class" panel with a countdown, driven
+  by the weekly timetable.
 - An **admin panel** (`/admin`) — protected by per-person username/password
   accounts — where a teacher manages the roster, shuffles/rotates seats,
   pins fixed seats, sets "keep apart" rules, and reviews an **activity log**
   of every change and who made it.
+- A **Weekly Timetable admin page** (`/admin/timetable`) for the 5-day ×
+  9-period schedule: period times, break marking, subject-per-cell (with an
+  optional early period and splitting a period into parallel groups for
+  electives), and a subjects → teacher lookup table.
+- A **Room Timetable admin page** (`/admin/room-timetable`) for periods when
+  a class is away from its home room — fill in which other class is visiting
+  instead; leave blank to fall back to the weekly timetable.
 
 Rebuilt from a Claude Design HTML/CSS/JS prototype
 (`../student-seating-arrangement-plan/`) as a real deployable app: React
@@ -44,6 +53,10 @@ netlify dev
 This runs the Vite frontend and the Netlify Function together at
 `http://localhost:8888`, using a local `local.db` SQLite file (created
 automatically — nothing to configure).
+
+If `netlify-cli` won't install on your Node version, run `npm run dev:local`
+instead — a small netlify-cli-free dev server (`scripts/dev-server.ts`) that
+does the same job, and auto-restarts on file changes.
 
 Create your first admin account against the local database:
 
@@ -119,11 +132,23 @@ You only need `npm run setup:admin` once, to create the very first account.
 ## Project layout
 
 ```
-netlify/functions/api.ts        Single serverless function, routes all /api/*
-netlify/functions/lib/          db, auth, audit, seating-logic modules
-shared/types.ts                 Types shared by frontend and backend
-scripts/setup-admin.mjs         One-time DB schema + first-admin bootstrap
-src/pages/SeatingChart.tsx      Public read-only chart
-src/pages/AdminLogin.tsx        Admin sign-in
-src/pages/AdminPanel.tsx        Admin panel (roster, rules, log, admins)
+netlify/functions/api.ts          Single serverless function, routes all /api/*
+netlify/functions/lib/            db, auth, audit, seating-logic, timetable-logic modules
+shared/types.ts                   Types shared by frontend and backend
+scripts/setup-admin.mjs           One-time DB schema + first-admin bootstrap
+scripts/dev-server.ts             netlify-cli-free local dev server (npm run dev:local)
+src/pages/SeatingChart.tsx        Public chart + live Now/Next timetable panel
+src/pages/AdminLogin.tsx          Admin sign-in
+src/pages/AdminPanel.tsx          Admin panel (roster, rules, log, admins)
+src/pages/TimetableAdmin.tsx      Weekly timetable editor
+src/pages/RoomTimetableAdmin.tsx  Room-override editor
+src/schedule.ts                   Client-side "what's happening now" computation
 ```
+
+Timetable and room-timetable data are stored the same way as the seating
+chart (`timetable_state` / `room_timetable_state` tables, same
+optimistic-concurrency singleton-row pattern) — same auth, same audit
+logging, same multi-device sync. Grid edits (period times, subjects, split
+groups, home-room checkboxes) are a local draft with an explicit **Save
+changes** button, same reasoning as the roster: editing shouldn't fire a
+network request per keystroke.

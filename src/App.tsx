@@ -3,6 +3,8 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import SeatingChart from './pages/SeatingChart';
 import AdminLogin from './pages/AdminLogin';
 import AdminPanel from './pages/AdminPanel';
+import TimetableAdmin from './pages/TimetableAdmin';
+import RoomTimetableAdmin from './pages/RoomTimetableAdmin';
 import { api, setCsrfToken } from './api/client';
 import { colors, fontFamily } from './theme';
 
@@ -50,6 +52,8 @@ export default function App() {
           )
         }
       />
+      <Route path="/admin/timetable" element={admin ? <TimetableAdmin /> : <Navigate to="/admin/login" replace />} />
+      <Route path="/admin/room-timetable" element={admin ? <RoomTimetableAdmin /> : <Navigate to="/admin/login" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

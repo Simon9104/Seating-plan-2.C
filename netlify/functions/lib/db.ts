@@ -43,6 +43,20 @@ CREATE TABLE IF NOT EXISTS seating_state (
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_by TEXT
 );
+CREATE TABLE IF NOT EXISTS timetable_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  data TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_by TEXT
+);
+CREATE TABLE IF NOT EXISTS room_timetable_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  data TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_by TEXT
+);
 `;
 
 let client: Client | null = null;

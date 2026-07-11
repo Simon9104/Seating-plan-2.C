@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { colors, fontFamily } from '../theme';
-import type { PublicSeating } from '../../shared/types';
+import { computeSchedule } from '../schedule';
+import type { PublicSeating, RoomTimetableState, TimetableState } from '../../shared/types';
 
 const POLL_MS = 4000;
+const TIMETABLE_POLL_MS = 30000;
 
 export default function SeatingChart() {
   const [data, setData] = useState<PublicSeating | null>(null);
   const timer = useRef<ReturnType<typeof setInterval>>();
+
+  const [timetable, setTimetable] = useState<TimetableState | null>(null);
+  const [room, setRoom] = useState<RoomTimetableState | null>(null);
+  const timetableTimer = useRef<ReturnType<typeof setInterval>>();
+  const [now, setNow] = useState(new Date());
+  const clockTimer = useRef<ReturnType<typeof setInterval>>();
 
   useEffect(() => {
     let cancelled = false;
@@ -27,9 +35,37 @@ export default function SeatingChart() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      api
+        .getTimetable()
+        .then((d) => {
+          if (!cancelled) setTimetable(d);
+        })
+        .catch(() => {});
+      api
+        .getRoomTimetable()
+        .then((d) => {
+          if (!cancelled) setRoom(d);
+        })
+        .catch(() => {});
+    };
+    load();
+    timetableTimer.current = setInterval(load, TIMETABLE_POLL_MS);
+    clockTimer.current = setInterval(() => setNow(new Date()), 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(timetableTimer.current);
+      clearInterval(clockTimer.current);
+    };
+  }, []);
+
   const seats = data?.seats ?? new Array(30).fill('');
   const deskAccent = data?.deskAccent ?? '#dbe4f0';
   const labelStyle = data?.labelStyle ?? 'numbers';
+  const schedule = computeSchedule(timetable, room, now);
+  const currentTime = now.toLocaleTimeString('en-GB');
 
   const tables = [];
   for (let i = 0; i < 15; i++) {
@@ -68,7 +104,38 @@ export default function SeatingChart() {
             Seating Plan
           </div>
           <div style={{ fontSize: 22, fontWeight: 600 }}>Class Seating Chart</div>
+          <div style={{ fontSize: 32, fontWeight: 600, color: colors.text, marginTop: 10, fontVariantNumeric: 'tabular-nums' }}>{currentTime}</div>
         </div>
+
+        <div
+          style={{
+            border: `2px solid ${colors.borderSoft}`,
+            borderRadius: 16,
+            padding: '24px 32px',
+            background: colors.cardBg,
+            marginBottom: 24,
+            display: 'flex',
+            gap: 32,
+            alignItems: 'center',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={nowNextLabelStyle}>Now</div>
+            <div style={{ fontSize: 24, fontWeight: 600 }}>{schedule.currentSubject}</div>
+            <div style={{ fontSize: 14, color: colors.textMuted, marginTop: 2 }}>{schedule.currentTeacher}</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={nowNextLabelStyle}>Next</div>
+            <div style={{ fontSize: 20, fontWeight: 600, color: colors.labelMuted }}>{schedule.nextSubject}</div>
+            <div style={{ fontSize: 14, color: colors.textMuted, marginTop: 2 }}>{schedule.nextTeacher}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={nowNextLabelStyle}>{schedule.countdownLabel}</div>
+            <div style={{ fontSize: 28, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: colors.text }}>{schedule.countdownText}</div>
+          </div>
+        </div>
+
         <div
           style={{
             border: `2px solid ${colors.borderSoft}`,
@@ -141,6 +208,14 @@ export default function SeatingChart() {
     </div>
   );
 }
+
+const nowNextLabelStyle = {
+  fontSize: 11,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase' as const,
+  color: colors.textFaint,
+  marginBottom: 6
+};
 
 function SeatCell({ text }: { text: string }) {
   return (
