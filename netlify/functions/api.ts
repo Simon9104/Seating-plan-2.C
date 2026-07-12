@@ -18,6 +18,7 @@ import {
   SESSION_TTL_SECONDS
 } from './lib/auth';
 import { logAction, listAuditLog } from './lib/audit';
+import { botLogCountrySummary, botLogTotalCount, listBotLog } from './lib/bot-log';
 import {
   addAvoidPair,
   addRule,
@@ -351,6 +352,19 @@ export default async (req: Request, context: Context): Promise<Response> => {
         const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0);
         const entries = await listAuditLog(db, limit, offset);
         return json(200, { entries });
+      }
+
+      if (path === '/admin/bot-log' && method === 'GET') {
+        const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 50, 1), 200);
+        const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0);
+        const country = url.searchParams.get('country') || undefined;
+        const [entries, total] = await Promise.all([listBotLog(db, limit, offset, country), botLogTotalCount(db)]);
+        return json(200, { entries, total });
+      }
+
+      if (path === '/admin/bot-log/summary' && method === 'GET') {
+        const countries = await botLogCountrySummary(db);
+        return json(200, { countries });
       }
 
       if (path === '/admin/admins' && method === 'GET') {

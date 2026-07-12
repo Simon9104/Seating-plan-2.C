@@ -16,6 +16,11 @@ A classroom seating-plan + timetable app with:
 - A **Room Timetable admin page** (`/admin/room-timetable`) for periods when
   a class is away from its home room — fill in which other class is visiting
   instead; leave blank to fall back to the weekly timetable.
+- A **bot honeypot**: fake admin-login pages at common CMS paths bots scan
+  for (`/wp-admin`, `/wp-login.php`, `/administrator`, `/phpmyadmin`).
+  Nothing ever actually signs in through them — every hit (and any
+  submitted username/password) is logged with IP and geo-IP country/city,
+  viewable at `/admin/bot-activity`.
 
 Rebuilt from a Claude Design HTML/CSS/JS prototype
 (`../student-seating-arrangement-plan/`) as a real deployable app: React
@@ -129,12 +134,37 @@ You only need `npm run setup:admin` once, to create the very first account.
 - `netlify.toml` sets `Content-Security-Policy`, `X-Frame-Options`,
   `Referrer-Policy`, `HSTS`, etc. on every response.
 
+## Bot honeypot
+
+`netlify/functions/decoy.ts` is a second, separate serverless function bound
+directly to a handful of URLs bots commonly scan for (`/wp-admin`,
+`/wp-login.php`, `/administrator`, `/phpmyadmin` — see
+`shared/decoy-paths.ts`). It's intentionally unauthenticated and public —
+that's the point. Every request (GET or POST) is logged to a `bot_log`
+table with IP, Netlify's built-in geo-IP data (country/city/lat-lon), user
+agent, and — if the request POSTed something that looks like a login form
+(recognizing both generic `username`/`password` and WordPress's `log`/`pwd`
+field names, as JSON or form-encoded) — the submitted username and
+password. It always responds with a generic "Invalid username or
+password," never grants anything, and never touches real admin sessions.
+View captured activity at `/admin/bot-activity` (real-admin-auth
+protected, same as everything else under `/admin`). Entries older than 90
+days are pruned automatically.
+
+Since these paths sit outside `/api/*`, in local dev the Vite proxy and
+`scripts/dev-server.ts` route them to the decoy function specifically —
+see `shared/decoy-paths.ts` for the single source of truth all three
+places (Netlify's `config.path`, the Vite proxy, and the dev server) read
+from.
+
 ## Project layout
 
 ```
-netlify/functions/api.ts          Single serverless function, routes all /api/*
-netlify/functions/lib/            db, auth, audit, seating-logic, timetable-logic modules
+netlify/functions/api.ts          Main serverless function, routes all /api/*
+netlify/functions/decoy.ts        Honeypot function, bound to fake admin-login paths
+netlify/functions/lib/            db, auth, audit, seating/timetable/bot-log logic modules
 shared/types.ts                   Types shared by frontend and backend
+shared/decoy-paths.ts             Honeypot path list (single source of truth)
 scripts/setup-admin.mjs           One-time DB schema + first-admin bootstrap
 scripts/dev-server.ts             netlify-cli-free local dev server (npm run dev:local)
 src/pages/SeatingChart.tsx        Public chart + live Now/Next timetable panel
@@ -142,6 +172,7 @@ src/pages/AdminLogin.tsx          Admin sign-in
 src/pages/AdminPanel.tsx          Admin panel (roster, rules, log, admins)
 src/pages/TimetableAdmin.tsx      Weekly timetable editor
 src/pages/RoomTimetableAdmin.tsx  Room-override editor
+src/pages/BotActivity.tsx         Honeypot capture viewer
 src/schedule.ts                   Client-side "what's happening now" computation
 ```
 

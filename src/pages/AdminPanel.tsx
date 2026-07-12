@@ -613,7 +613,10 @@ export default function AdminPanel({
       </div>
       </div>
 
-      <div style={{ textAlign: 'right' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16 }}>
+        <Link to="/admin/bot-activity" style={{ fontSize: 13, color: colors.rotateBlue, textDecoration: 'none' }}>
+          Bot activity →
+        </Link>
         <Link to="/admin/timetable" style={{ fontSize: 13, color: colors.rotateBlue, textDecoration: 'none' }}>
           Manage weekly timetable →
         </Link>

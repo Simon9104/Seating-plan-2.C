@@ -62,3 +62,23 @@ CREATE TABLE IF NOT EXISTS room_timetable_state (
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_by TEXT
 );
+
+CREATE TABLE IF NOT EXISTS bot_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  path TEXT NOT NULL,
+  method TEXT NOT NULL,
+  ip TEXT,
+  country_code TEXT,
+  country_name TEXT,
+  region TEXT,
+  city TEXT,
+  latitude REAL,
+  longitude REAL,
+  user_agent TEXT,
+  username TEXT,
+  password TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_log_created_at ON bot_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bot_log_country ON bot_log (country_code);

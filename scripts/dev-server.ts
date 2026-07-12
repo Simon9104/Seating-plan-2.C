@@ -6,7 +6,9 @@
 // Usage: npm run dev:local
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createViteServer } from 'vite';
-import handler from '../netlify/functions/api';
+import apiHandler from '../netlify/functions/api';
+import decoyHandler from '../netlify/functions/decoy';
+import { isDecoyPath } from '../shared/decoy-paths';
 
 const FUNCTIONS_PORT = 9999;
 const FRONTEND_PORT = 8888;
@@ -20,6 +22,8 @@ async function readBody(req: IncomingMessage): Promise<Buffer | undefined> {
 
 async function handleFunctionRequest(req: IncomingMessage, res: ServerResponse) {
   const url = `http://localhost:${FUNCTIONS_PORT}${req.url}`;
+  const pathname = new URL(url).pathname;
+  const handler = isDecoyPath(pathname) ? decoyHandler : apiHandler;
   const headers = new Headers();
   for (const [key, value] of Object.entries(req.headers)) {
     if (Array.isArray(value)) value.forEach((v) => headers.append(key, v));
@@ -29,7 +33,7 @@ async function handleFunctionRequest(req: IncomingMessage, res: ServerResponse) 
   const request = new Request(url, { method: req.method, headers, body });
 
   try {
-    const response = await handler(request, { ip: '127.0.0.1' } as unknown as Parameters<typeof handler>[1]);
+    const response = await handler(request, { ip: '127.0.0.1', geo: {} } as unknown as Parameters<typeof handler>[1]);
     res.statusCode = response.status;
     response.headers.forEach((value, key) => {
       if (key.toLowerCase() !== 'set-cookie') res.setHeader(key, value);

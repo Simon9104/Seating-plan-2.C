@@ -57,6 +57,29 @@ export interface AuditEntry {
   createdAt: string;
 }
 
+export interface BotLogEntry {
+  id: number;
+  path: string;
+  method: string;
+  ip: string | null;
+  countryCode: string | null;
+  countryName: string | null;
+  region: string | null;
+  city: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  userAgent: string | null;
+  username: string | null;
+  password: string | null;
+  createdAt: string;
+}
+
+export interface BotLogCountrySummary {
+  countryCode: string | null;
+  countryName: string | null;
+  count: number;
+}
+
 export const SEAT_COUNT = 30;
 export const TABLE_COUNT = 15;
 export const MAX_HISTORY = 20;

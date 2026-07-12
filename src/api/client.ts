@@ -1,4 +1,13 @@
-import type { AdminSummary, AuditEntry, PublicSeating, RoomTimetableState, SeatingState, TimetableState } from '../../shared/types';
+import type {
+  AdminSummary,
+  AuditEntry,
+  BotLogCountrySummary,
+  BotLogEntry,
+  PublicSeating,
+  RoomTimetableState,
+  SeatingState,
+  TimetableState
+} from '../../shared/types';
 
 export class ApiError extends Error {
   status: number;
@@ -80,5 +89,11 @@ export const api = {
 
   getRoomTimetable: () => request<RoomTimetableState>('/room-timetable'),
   saveRoomTimetable: (grid: RoomTimetableState['grid']) =>
-    request<RoomTimetableState>('/admin/room-timetable', { method: 'POST', body: JSON.stringify({ grid }) })
+    request<RoomTimetableState>('/admin/room-timetable', { method: 'POST', body: JSON.stringify({ grid }) }),
+
+  botLog: (limit: number, offset: number, country?: string) =>
+    request<{ entries: BotLogEntry[]; total: number }>(
+      `/admin/bot-log?limit=${limit}&offset=${offset}${country ? `&country=${encodeURIComponent(country)}` : ''}`
+    ),
+  botLogSummary: () => request<{ countries: BotLogCountrySummary[] }>('/admin/bot-log/summary')
 };

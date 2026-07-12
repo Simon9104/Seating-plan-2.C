@@ -5,6 +5,7 @@ import AdminLogin from './pages/AdminLogin';
 import AdminPanel from './pages/AdminPanel';
 import TimetableAdmin from './pages/TimetableAdmin';
 import RoomTimetableAdmin from './pages/RoomTimetableAdmin';
+import BotActivity from './pages/BotActivity';
 import { api, setCsrfToken } from './api/client';
 import { colors, fontFamily } from './theme';
 
@@ -54,6 +55,7 @@ export default function App() {
       />
       <Route path="/admin/timetable" element={admin ? <TimetableAdmin /> : <Navigate to="/admin/login" replace />} />
       <Route path="/admin/room-timetable" element={admin ? <RoomTimetableAdmin /> : <Navigate to="/admin/login" replace />} />
+      <Route path="/admin/bot-activity" element={admin ? <BotActivity /> : <Navigate to="/admin/login" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
