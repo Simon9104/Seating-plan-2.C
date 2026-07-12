@@ -6,6 +6,47 @@
 [functions]
   node_bundler = "esbuild"
 
+## Decoy/honeypot paths (keep in sync with shared/decoy-paths.ts) — these
+## must be routed to the decoy function explicitly and BEFORE the SPA
+## catch-all below, since a "/*" rewrite can otherwise win and serve the
+## normal app instead of the fake login page.
+[[redirects]]
+  from = "/wp-admin"
+  to = "/.netlify/functions/decoy"
+  status = 200
+[[redirects]]
+  from = "/wp-admin/*"
+  to = "/.netlify/functions/decoy"
+  status = 200
+[[redirects]]
+  from = "/wp-login.php"
+  to = "/.netlify/functions/decoy"
+  status = 200
+[[redirects]]
+  from = "/administrator"
+  to = "/.netlify/functions/decoy"
+  status = 200
+[[redirects]]
+  from = "/administrator/*"
+  to = "/.netlify/functions/decoy"
+  status = 200
+[[redirects]]
+  from = "/phpmyadmin"
+  to = "/.netlify/functions/decoy"
+  status = 200
+[[redirects]]
+  from = "/phpmyadmin/*"
+  to = "/.netlify/functions/decoy"
+  status = 200
+[[redirects]]
+  from = "/admin-test"
+  to = "/.netlify/functions/decoy"
+  status = 200
+[[redirects]]
+  from = "/admin-test/*"
+  to = "/.netlify/functions/decoy"
+  status = 200
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
@@ -28,3 +69,10 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "no-referrer"
     Cache-Control = "no-store"
+
+# Overrides the blanket Permissions-Policy above just for the GPS-capturing
+# decoy page — everywhere else on the site keeps geolocation denied.
+[[headers]]
+  for = "/admin-test"
+  [headers.values]
+    Permissions-Policy = "geolocation=(self), microphone=(), camera=()"
