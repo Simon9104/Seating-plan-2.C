@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS bot_log (
   city TEXT,
   latitude REAL,
   longitude REAL,
+  accuracy_m REAL,
+  location_source TEXT NOT NULL DEFAULT 'ip',
   user_agent TEXT,
   username TEXT,
   password TEXT,
@@ -76,6 +78,14 @@ CREATE TABLE IF NOT EXISTS bot_log (
 CREATE INDEX IF NOT EXISTS idx_bot_log_created_at ON bot_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bot_log_country ON bot_log (country_code);
 `;
+
+// SQLite has no "ADD COLUMN IF NOT EXISTS", so columns added after a table's
+// first release are migrated here: best-effort, swallowing the "duplicate
+// column" error on databases that already have them.
+const COLUMN_MIGRATIONS: Array<{ table: string; column: string }> = [
+  { table: 'bot_log', column: 'accuracy_m REAL' },
+  { table: 'bot_log', column: "location_source TEXT NOT NULL DEFAULT 'ip'" }
+];
 
 let client: Client | null = null;
 let schemaReady: Promise<void> | null = null;
@@ -111,6 +121,13 @@ export async function ensureSchema(): Promise<void> {
     schemaReady = (async () => {
       for (const stmt of statements) {
         await db.execute(stmt);
+      }
+      for (const { table, column } of COLUMN_MIGRATIONS) {
+        try {
+          await db.execute(`ALTER TABLE ${table} ADD COLUMN ${column}`);
+        } catch {
+          // Column already exists on this database — fine, nothing to do.
+        }
       }
     })();
   }

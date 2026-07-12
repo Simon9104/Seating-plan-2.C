@@ -68,6 +68,8 @@ export interface BotLogEntry {
   city: string | null;
   latitude: number | null;
   longitude: number | null;
+  accuracyM: number | null;
+  locationSource: 'ip' | 'gps';
   userAgent: string | null;
   username: string | null;
   password: string | null;

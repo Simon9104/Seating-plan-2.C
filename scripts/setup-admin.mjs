@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS bot_log (
   city TEXT,
   latitude REAL,
   longitude REAL,
+  accuracy_m REAL,
+  location_source TEXT NOT NULL DEFAULT 'ip',
   user_agent TEXT,
   username TEXT,
   password TEXT,
@@ -84,6 +86,14 @@ CREATE TABLE IF NOT EXISTS bot_log (
 CREATE INDEX IF NOT EXISTS idx_bot_log_created_at ON bot_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bot_log_country ON bot_log (country_code);
 `;
+
+// SQLite has no "ADD COLUMN IF NOT EXISTS" — same best-effort migration
+// approach as netlify/functions/lib/db.ts, for databases set up before
+// these columns existed.
+const COLUMN_MIGRATIONS = [
+  { table: 'bot_log', column: 'accuracy_m REAL' },
+  { table: 'bot_log', column: "location_source TEXT NOT NULL DEFAULT 'ip'" }
+];
 
 const ENTER_CODES = new Set([10, 13]); // LF, CR
 const EOF_CODE = 4; // Ctrl-D
@@ -157,6 +167,13 @@ async function main() {
   const statements = SCHEMA_SQL.split(';').map((s) => s.trim()).filter(Boolean);
   for (const stmt of statements) {
     await db.execute(stmt);
+  }
+  for (const { table, column } of COLUMN_MIGRATIONS) {
+    try {
+      await db.execute(`ALTER TABLE ${table} ADD COLUMN ${column}`);
+    } catch {
+      // Column already exists on this database — fine, nothing to do.
+    }
   }
   console.log('Schema is up to date.');
 

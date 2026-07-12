@@ -17,10 +17,12 @@ A classroom seating-plan + timetable app with:
   a class is away from its home room — fill in which other class is visiting
   instead; leave blank to fall back to the weekly timetable.
 - A **bot honeypot**: fake admin-login pages at common CMS paths bots scan
-  for (`/wp-admin`, `/wp-login.php`, `/administrator`, `/phpmyadmin`).
-  Nothing ever actually signs in through them — every hit (and any
-  submitted username/password) is logged with IP and geo-IP country/city,
-  viewable at `/admin/bot-activity`.
+  for (`/wp-admin`, `/wp-login.php`, `/administrator`, `/phpmyadmin`, plus
+  `/admin-test`). Nothing ever actually signs in through them — every hit
+  (and any submitted username/password) is logged with IP and geo-IP
+  country/city, viewable at `/admin/bot-activity`. `/admin-test` also asks
+  the visitor's browser for exact GPS coordinates, shown separately from
+  the IP-based estimate when granted.
 
 Rebuilt from a Claude Design HTML/CSS/JS prototype
 (`../student-seating-arrangement-plan/`) as a real deployable app: React
@@ -138,7 +140,7 @@ You only need `npm run setup:admin` once, to create the very first account.
 
 `netlify/functions/decoy.ts` is a second, separate serverless function bound
 directly to a handful of URLs bots commonly scan for (`/wp-admin`,
-`/wp-login.php`, `/administrator`, `/phpmyadmin` — see
+`/wp-login.php`, `/administrator`, `/phpmyadmin`, `/admin-test` — see
 `shared/decoy-paths.ts`). It's intentionally unauthenticated and public —
 that's the point. Every request (GET or POST) is logged to a `bot_log`
 table with IP, Netlify's built-in geo-IP data (country/city/lat-lon), user
@@ -150,6 +152,18 @@ password," never grants anything, and never touches real admin sessions.
 View captured activity at `/admin/bot-activity` (real-admin-auth
 protected, same as everything else under `/admin`). Entries older than 90
 days are pruned automatically.
+
+`/admin-test` (`PRECISE_LOCATION_PATH` in `shared/decoy-paths.ts`) is the
+same idea plus one thing: the served page includes a small inline script
+that asks the browser's Geolocation API for exact coordinates and reports
+them back (`{ __geoReportFor: <row id>, latitude, longitude, accuracy }`)
+to the same path. Plain HTTP scanners never execute JavaScript, so this
+only ever affects a real browser that loads the page and grants the
+permission prompt — most bots won't. The report updates the specific row
+it names (scoped to that path and a 10-minute window, so it can't be used
+to tamper with unrelated rows), setting `location_source = 'gps'` and
+`accuracy_m`; the admin view links straight to Google Maps for that point
+and visually distinguishes it from the IP-based estimate.
 
 Since these paths sit outside `/api/*`, in local dev the Vite proxy and
 `scripts/dev-server.ts` route them to the decoy function specifically —

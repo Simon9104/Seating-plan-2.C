@@ -1,46 +1,97 @@
 import type { Context } from '@netlify/functions';
 import { ensureSchema, getDb } from './lib/db';
-import { DECOY_FUNCTION_PATHS } from '../../shared/decoy-paths';
+import { DECOY_FUNCTION_PATHS, PRECISE_LOCATION_PATH } from '../../shared/decoy-paths';
 
 // Honeypot: bound to common CMS admin-login paths (see shared/decoy-paths.ts)
 // so scanning bots that probe for them get served a plausible-looking fake
 // login instead of a 404. Every hit — and any submitted credentials — is
 // logged with IP + Netlify's built-in geo-IP data, viewable by real admins
 // at /admin/bot-activity. This never grants access to anything; it's bait.
+//
+// PRECISE_LOCATION_PATH additionally asks the visitor's browser for exact
+// GPS coordinates via a small inline script. Plain HTTP scanners never
+// execute it, so this only ever affects a real browser that loads the page.
 
 const MAX_BODY_BYTES = 20_000;
 const MAX_FIELD_LEN = 100;
+const GEO_REPORT_WINDOW_MINUTES = 10;
 const USERNAME_FIELDS = ['username', 'user', 'log', 'email', 'login'];
 const PASSWORD_FIELDS = ['password', 'pass', 'pwd'];
 
-async function extractCredentials(req: Request): Promise<{ username: string | null; password: string | null }> {
+interface GeoReport {
+  rowId: number;
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+}
+
+async function readJsonBody(req: Request): Promise<Record<string, unknown> | null> {
+  const contentType = req.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) return null;
   const len = Number(req.headers.get('content-length') || '0');
-  if (!len || len > MAX_BODY_BYTES) return { username: null, password: null };
+  if (!len || len > MAX_BODY_BYTES) return null;
   try {
-    const text = await req.text();
-    if (!text) return { username: null, password: null };
-    const contentType = req.headers.get('content-type') || '';
-    const fields: Record<string, string> = {};
-    if (contentType.includes('application/json')) {
-      const obj = JSON.parse(text);
-      if (obj && typeof obj === 'object') {
-        for (const [k, v] of Object.entries(obj)) fields[k.toLowerCase()] = String(v);
-      }
-    } else {
-      for (const [k, v] of new URLSearchParams(text).entries()) fields[k.toLowerCase()] = v;
-    }
-    const username = USERNAME_FIELDS.map((k) => fields[k]).find(Boolean) || null;
-    const password = PASSWORD_FIELDS.map((k) => fields[k]).find(Boolean) || null;
-    return {
-      username: username ? username.slice(0, MAX_FIELD_LEN) : null,
-      password: password ? password.slice(0, MAX_FIELD_LEN) : null
-    };
+    const obj = JSON.parse(await req.text());
+    return obj && typeof obj === 'object' ? (obj as Record<string, unknown>) : null;
   } catch {
-    return { username: null, password: null };
+    return null;
   }
 }
 
-function loginPageHtml(showError: boolean): string {
+function parseGeoReport(body: Record<string, unknown> | null): GeoReport | null {
+  if (!body) return null;
+  const rowId = Number(body.__geoReportFor);
+  const latitude = Number(body.latitude);
+  const longitude = Number(body.longitude);
+  if (!Number.isFinite(rowId) || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  const accuracy = Number(body.accuracy);
+  return { rowId, latitude, longitude, accuracy: Number.isFinite(accuracy) ? accuracy : null };
+}
+
+async function extractCredentials(req: Request, jsonBody: Record<string, unknown> | null): Promise<{ username: string | null; password: string | null }> {
+  let fields: Record<string, string> = {};
+  if (jsonBody) {
+    for (const [k, v] of Object.entries(jsonBody)) fields[k.toLowerCase()] = typeof v === 'object' ? '' : String(v);
+  } else {
+    const contentType = req.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) return { username: null, password: null }; // already consumed/invalid above
+    const len = Number(req.headers.get('content-length') || '0');
+    if (!len || len > MAX_BODY_BYTES) return { username: null, password: null };
+    try {
+      const text = await req.text();
+      for (const [k, v] of new URLSearchParams(text).entries()) fields[k.toLowerCase()] = v;
+    } catch {
+      fields = {};
+    }
+  }
+  const username = USERNAME_FIELDS.map((k) => fields[k]).find(Boolean) || null;
+  const password = PASSWORD_FIELDS.map((k) => fields[k]).find(Boolean) || null;
+  return {
+    username: username ? username.slice(0, MAX_FIELD_LEN) : null,
+    password: password ? password.slice(0, MAX_FIELD_LEN) : null
+  };
+}
+
+const GEO_SCRIPT = (rowId: number) => `
+<script>
+(function(){
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(function(pos){
+    fetch(location.pathname, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        __geoReportFor: ${rowId},
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy
+      })
+    }).catch(function(){});
+  }, function(){}, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+})();
+</script>`;
+
+function loginPageHtml(showError: boolean, geoRowId: number | null): string {
   return `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Admin Login</title>
@@ -61,6 +112,7 @@ function loginPageHtml(showError: boolean): string {
   <label>Password<input type="password" name="pwd" autocomplete="current-password"></label>
   <button type="submit">Log In</button>
 </form>
+${geoRowId !== null ? GEO_SCRIPT(geoRowId) : ''}
 </body></html>`;
 }
 
@@ -75,23 +127,63 @@ function htmlResponse(body: string): Response {
   });
 }
 
+function noContent(): Response {
+  return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+}
+
 export default async (req: Request, context: Context): Promise<Response> => {
   const url = new URL(req.url);
   const method = req.method;
+  const isPreciseLocationPath = url.pathname === PRECISE_LOCATION_PATH;
 
   try {
     await ensureSchema();
     const db = getDb();
 
-    const { username, password } = method === 'POST' ? await extractCredentials(req) : { username: null, password: null };
-    const geo = context.geo || {};
+    if (method === 'POST') {
+      const jsonBody = await readJsonBody(req);
+      const geoReport = parseGeoReport(jsonBody);
+      if (geoReport) {
+        // Follow-up telemetry ping from the geolocation script, not a fresh
+        // hit or login attempt — update the row it's reporting for.
+        await db.execute({
+          sql: `UPDATE bot_log SET latitude = ?, longitude = ?, accuracy_m = ?, location_source = 'gps'
+                WHERE id = ? AND path = ? AND created_at > datetime('now', ?)`,
+          args: [geoReport.latitude, geoReport.longitude, geoReport.accuracy, geoReport.rowId, url.pathname, `-${GEO_REPORT_WINDOW_MINUTES} minutes`]
+        });
+        return noContent();
+      }
 
-    await db.execute({
+      const { username, password } = await extractCredentials(req, jsonBody);
+      const rowId = await logHit(db, url.pathname, method, context, req.headers.get('user-agent'), username, password);
+      return htmlResponse(loginPageHtml(true, isPreciseLocationPath ? rowId : null));
+    }
+
+    const rowId = await logHit(db, url.pathname, method, context, req.headers.get('user-agent'), null, null);
+    return htmlResponse(loginPageHtml(false, isPreciseLocationPath ? rowId : null));
+  } catch (err) {
+    console.error('[decoy] request failed', err);
+    return htmlResponse(loginPageHtml(method === 'POST', null));
+  }
+};
+
+async function logHit(
+  db: ReturnType<typeof getDb>,
+  pathname: string,
+  method: string,
+  context: Context,
+  userAgent: string | null,
+  username: string | null,
+  password: string | null
+): Promise<number | null> {
+  const geo = context.geo || {};
+  try {
+    const res = await db.execute({
       sql: `INSERT INTO bot_log
               (path, method, ip, country_code, country_name, region, city, latitude, longitude, user_agent, username, password)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
-        url.pathname,
+        pathname,
         method,
         context.ip || null,
         geo.country?.code || null,
@@ -100,18 +192,18 @@ export default async (req: Request, context: Context): Promise<Response> => {
         geo.city || null,
         geo.latitude ?? null,
         geo.longitude ?? null,
-        (req.headers.get('user-agent') || '').slice(0, 300) || null,
+        (userAgent || '').slice(0, 300) || null,
         username,
         password
       ]
     });
     // Opportunistic cleanup so this table doesn't grow forever.
     await db.execute({ sql: `DELETE FROM bot_log WHERE created_at < datetime('now', '-90 days')`, args: [] });
+    return res.lastInsertRowid !== undefined ? Number(res.lastInsertRowid) : null;
   } catch (err) {
     console.error('[decoy] logging failed', err);
+    return null;
   }
-
-  return htmlResponse(loginPageHtml(method === 'POST'));
-};
+}
 
 export const config = { path: DECOY_FUNCTION_PATHS };

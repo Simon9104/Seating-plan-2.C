@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS bot_log (
   city TEXT,
   latitude REAL,
   longitude REAL,
+  accuracy_m REAL,
+  location_source TEXT NOT NULL DEFAULT 'ip',
   user_agent TEXT,
   username TEXT,
   password TEXT,
@@ -82,3 +84,8 @@ CREATE TABLE IF NOT EXISTS bot_log (
 
 CREATE INDEX IF NOT EXISTS idx_bot_log_created_at ON bot_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bot_log_country ON bot_log (country_code);
+
+-- If bot_log already existed before accuracy_m/location_source were added:
+--   ALTER TABLE bot_log ADD COLUMN accuracy_m REAL;
+--   ALTER TABLE bot_log ADD COLUMN location_source TEXT NOT NULL DEFAULT 'ip';
+-- (db.ts and setup-admin.mjs both do this automatically and safely.)

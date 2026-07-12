@@ -52,8 +52,10 @@ export default function BotActivity() {
           <div style={sectionLabelStyle}>Admin</div>
           <div style={{ fontSize: 22, fontWeight: 600 }}>Bot Activity</div>
           <div style={{ fontSize: 13, color: colors.textMuted, marginTop: 6, maxWidth: 640 }}>
-            Hits on decoy admin-login pages (common CMS paths bots scan for). Nobody ever actually signs in through
-            them — every attempt is just logged here.
+            Hits on decoy admin-login pages (common CMS paths bots scan for, plus /admin-test). Nobody ever actually
+            signs in through them — every attempt is just logged here. Location is normally IP-based
+            (country/city); /admin-test also asks the visitor's browser for exact GPS coordinates, shown as "Exact
+            (GPS)" when a real browser grants it.
           </div>
         </div>
         <Link to="/admin" style={navLinkStyle}>
@@ -113,6 +115,18 @@ export default function BotActivity() {
                     <td style={tdStyle}>{e.ip || '—'}</td>
                     <td style={tdStyle}>
                       {[e.city, e.region, e.countryName].filter(Boolean).join(', ') || '—'}
+                      {e.latitude != null && e.longitude != null && (
+                        <div>
+                          <a
+                            href={`https://www.google.com/maps?q=${e.latitude},${e.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontSize: 11, color: e.locationSource === 'gps' ? colors.rotateBlue : colors.textFaint }}
+                          >
+                            {e.locationSource === 'gps' ? `Exact (GPS${e.accuracyM ? `, ±${Math.round(e.accuracyM)}m` : ''})` : 'Approx. (IP)'}
+                          </a>
+                        </div>
+                      )}
                     </td>
                     <td style={{ ...tdStyle, fontFamily: 'ui-monospace, monospace' }}>{e.username || '—'}</td>
                     <td style={{ ...tdStyle, fontFamily: 'ui-monospace, monospace' }}>{e.password || '—'}</td>

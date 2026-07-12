@@ -12,6 +12,8 @@ interface BotLogRow {
   city: string | null;
   latitude: number | null;
   longitude: number | null;
+  accuracy_m: number | null;
+  location_source: string | null;
   user_agent: string | null;
   username: string | null;
   password: string | null;
@@ -30,6 +32,8 @@ function toEntry(row: BotLogRow): BotLogEntry {
     city: row.city,
     latitude: row.latitude,
     longitude: row.longitude,
+    accuracyM: row.accuracy_m,
+    locationSource: row.location_source === 'gps' ? 'gps' : 'ip',
     userAgent: row.user_agent,
     username: row.username,
     password: row.password,
