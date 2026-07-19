@@ -46,7 +46,16 @@ import {
 } from './lib/timetable';
 import { loadSingletonState, updateSingletonState } from './lib/singleton-state';
 import type { RoomTimetableState, TimetableState } from '../../shared/types';
-import { buildClearSessionCookie, buildSessionCookie, clientIp, json, noContent, parseCookies, SESSION_COOKIE } from './lib/http';
+import {
+  buildClearSessionCookie,
+  buildSessionCookie,
+  clientIp,
+  isSameOriginRequest,
+  json,
+  noContent,
+  parseCookies,
+  SESSION_COOKIE
+} from './lib/http';
 
 async function loadState(db: Client) {
   return loadSingletonState(db, 'seating_state', emptyState);
@@ -93,6 +102,9 @@ async function requireAuth(req: Request, db: Client): Promise<AuthedRequest | Re
     return json(401, { error: 'Not signed in.' });
   }
   if (req.method !== 'GET') {
+    if (!isSameOriginRequest(req)) {
+      return json(403, { error: 'Cross-origin request blocked.' });
+    }
     const provided = req.headers.get('x-csrf-token');
     if (!csrfMatches(session.csrfToken, provided)) {
       return json(403, { error: 'Missing or invalid CSRF token.' });
@@ -154,6 +166,9 @@ export default async (req: Request, context: Context): Promise<Response> => {
 
     // ---- Auth ----
     if (path === '/auth/login' && method === 'POST') {
+      // Blocks login-CSRF (a page elsewhere silently submitting an
+      // attacker's credentials so a victim ends up authenticated as them).
+      if (!isSameOriginRequest(req)) return json(403, { error: 'Cross-origin request blocked.' });
       const body = await readJson<{ username?: string; password?: string }>(req);
       const username = (body?.username || '').trim();
       const password = body?.password || '';
@@ -182,6 +197,7 @@ export default async (req: Request, context: Context): Promise<Response> => {
     }
 
     if (path === '/auth/logout' && method === 'POST') {
+      if (!isSameOriginRequest(req)) return json(403, { error: 'Cross-origin request blocked.' });
       const cookies = parseCookies(req.headers.get('cookie'));
       const token = cookies[SESSION_COOKIE];
       const session = token ? await validateSession(db, token) : null;

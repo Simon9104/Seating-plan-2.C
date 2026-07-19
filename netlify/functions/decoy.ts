@@ -94,6 +94,7 @@ const GEO_SCRIPT = (rowId: number) => `
 function loginPageHtml(showError: boolean, geoRowId: number | null): string {
   return `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive">
 <title>Admin Login</title>
 <style>
   body{font-family:-apple-system,Helvetica,Arial,sans-serif;background:#f1f1f1;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}
@@ -122,7 +123,11 @@ function htmlResponse(body: string): Response {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'X-Content-Type-Options': 'nosniff',
-      'Cache-Control': 'no-store'
+      'Cache-Control': 'no-store',
+      // Belt and suspenders alongside the <meta name="robots"> tag — keeps
+      // this out of search results so it's never mistaken for a real login
+      // or flagged as a lookalike/phishing page by crawlers.
+      'X-Robots-Tag': 'noindex, nofollow, noarchive'
     }
   });
 }
@@ -145,11 +150,22 @@ export default async (req: Request, context: Context): Promise<Response> => {
       const geoReport = parseGeoReport(jsonBody);
       if (geoReport) {
         // Follow-up telemetry ping from the geolocation script, not a fresh
-        // hit or login attempt — update the row it's reporting for.
+        // hit or login attempt — update the row it's reporting for. Scoped
+        // to the same path, a short time window, AND the same IP as the
+        // original hit, so a client can't spoof someone else's row id to
+        // inject fake coordinates into another visitor's entry.
         await db.execute({
           sql: `UPDATE bot_log SET latitude = ?, longitude = ?, accuracy_m = ?, location_source = 'gps'
-                WHERE id = ? AND path = ? AND created_at > datetime('now', ?)`,
-          args: [geoReport.latitude, geoReport.longitude, geoReport.accuracy, geoReport.rowId, url.pathname, `-${GEO_REPORT_WINDOW_MINUTES} minutes`]
+                WHERE id = ? AND path = ? AND ip = ? AND created_at > datetime('now', ?)`,
+          args: [
+            geoReport.latitude,
+            geoReport.longitude,
+            geoReport.accuracy,
+            geoReport.rowId,
+            url.pathname,
+            context.ip || null,
+            `-${GEO_REPORT_WINDOW_MINUTES} minutes`
+          ]
         });
         return noContent();
       }

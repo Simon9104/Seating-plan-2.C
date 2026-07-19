@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /wp-admin
+Disallow: /wp-login.php
+Disallow: /administrator
+Disallow: /phpmyadmin
+Disallow: /admin-test

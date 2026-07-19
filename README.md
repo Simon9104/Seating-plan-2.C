@@ -135,6 +135,21 @@ You only need `npm run setup:admin` once, to create the very first account.
 - Passwords require 12+ characters with at least one letter and one digit.
 - `netlify.toml` sets `Content-Security-Policy`, `X-Frame-Options`,
   `Referrer-Policy`, `HSTS`, etc. on every response.
+- **IP address is never taken from a header.** `clientIp()` only trusts
+  Netlify's own connection-derived `context.ip` — earlier it fell back to
+  an `x-nf-client-connection-ip` header, which a client can set directly,
+  letting an attacker spoof a fresh "IP" per request to defeat the
+  IP-based login lockout or forge the IP recorded in the audit/bot logs.
+  Fixed; there is no header-based fallback anymore.
+- **Origin-header check as CSRF defense-in-depth.** Every state-changing
+  admin request (and login/logout) additionally requires its `Origin` (or
+  `Referer`) to match the site itself — on top of, not instead of, the
+  CSRF token. Verified a request with a valid CSRF token but a mismatched
+  `Origin` is still rejected (403).
+- **The GPS geo-report on `/admin-test` is scoped to the reporting
+  request's IP**, not just the row id and time window — otherwise anyone
+  could guess/enumerate a recent row id and inject fake coordinates into
+  a different visitor's logged entry.
 
 ## Bot honeypot
 
@@ -152,6 +167,12 @@ password," never grants anything, and never touches real admin sessions.
 View captured activity at `/admin/bot-activity` (real-admin-auth
 protected, same as everything else under `/admin`). Entries older than 90
 days are pruned automatically.
+
+Every decoy path sends `X-Robots-Tag: noindex, nofollow, noarchive` and a
+matching `<meta name="robots">` tag, and `public/robots.txt` disallows
+them too, so search engines never crawl or index a page that looks like a
+real login form (avoids it turning up in search results or getting
+flagged as a phishing lookalike).
 
 `/admin-test` (`PRECISE_LOCATION_PATH` in `shared/decoy-paths.ts`) is the
 same idea plus one thing: the served page includes a small inline script

@@ -21,7 +21,13 @@ async function readBody(req: IncomingMessage): Promise<Buffer | undefined> {
 }
 
 async function handleFunctionRequest(req: IncomingMessage, res: ServerResponse) {
-  const url = `http://localhost:${FUNCTIONS_PORT}${req.url}`;
+  // Use the original Host header (the browser's real localhost:8888), not
+  // this internal port, so the reconstructed Request's origin matches what
+  // the browser actually sent as Origin/Referer — isSameOriginRequest()
+  // compares against it, and Vite's proxy must NOT rewrite Host for this
+  // to hold (see vite.config.ts: no changeOrigin on these proxy entries).
+  const host = req.headers.host || `localhost:${FUNCTIONS_PORT}`;
+  const url = `http://${host}${req.url}`;
   const pathname = new URL(url).pathname;
   const handler = isDecoyPath(pathname) ? decoyHandler : apiHandler;
   const headers = new Headers();

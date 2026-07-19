@@ -61,6 +61,32 @@ export function noContent(status: number, extraHeaders?: Record<string, string>)
   return new Response(null, { status, headers });
 }
 
-export function clientIp(req: Request, context: { ip?: string }): string {
-  return context.ip || req.headers.get('x-nf-client-connection-ip') || 'unknown';
+// Defense-in-depth alongside the CSRF token: reject state-changing requests
+// whose Origin/Referer doesn't match the site itself. A same-site cookie
+// already stops browsers from attaching it cross-site, and the CSRF token
+// is the primary defense, but checking Origin too means a leaked token
+// (e.g. via some unrelated bug) still isn't enough on its own.
+export function isSameOriginRequest(req: Request): boolean {
+  const selfOrigin = new URL(req.url).origin;
+  const origin = req.headers.get('origin');
+  if (origin) return origin === selfOrigin;
+  const referer = req.headers.get('referer');
+  if (referer) {
+    try {
+      return new URL(referer).origin === selfOrigin;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Only ever trust Netlify's own connection-derived context.ip — never a
+// header. Headers (including ones that look like internal Netlify headers,
+// e.g. x-forwarded-for / x-nf-client-connection-ip) can be set directly by
+// whoever sends the request, so falling back to one would let an attacker
+// spoof a fresh "IP" on every request and defeat IP-based login lockout,
+// or forge the IP recorded in the audit/bot logs.
+export function clientIp(_req: Request, context: { ip?: string }): string {
+  return context.ip || 'unknown';
 }
