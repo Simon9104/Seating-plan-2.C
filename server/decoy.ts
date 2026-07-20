@@ -1,12 +1,14 @@
-import type { Context } from '@netlify/functions';
+import type { RequestContext } from './lib/request-context';
 import { ensureSchema, getDb } from './lib/db';
-import { DECOY_FUNCTION_PATHS, PRECISE_LOCATION_PATH } from '../../shared/decoy-paths';
+import { PRECISE_LOCATION_PATH } from '../shared/decoy-paths';
 
 // Honeypot: bound to common CMS admin-login paths (see shared/decoy-paths.ts)
 // so scanning bots that probe for them get served a plausible-looking fake
 // login instead of a 404. Every hit — and any submitted credentials — is
-// logged with IP + Netlify's built-in geo-IP data, viewable by real admins
-// at /admin/bot-activity. This never grants access to anything; it's bait.
+// logged with IP + best-effort geo-IP data (see the platform adapter that
+// builds RequestContext, e.g. api/_lib/vercel-context.ts), viewable by real
+// admins at /admin/bot-activity. This never grants access to anything; it's
+// bait.
 //
 // PRECISE_LOCATION_PATH additionally asks the visitor's browser for exact
 // GPS coordinates via a small inline script. Plain HTTP scanners never
@@ -136,7 +138,7 @@ function noContent(): Response {
   return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export default async (req: Request, context: Context): Promise<Response> => {
+export default async (req: Request, context: RequestContext): Promise<Response> => {
   const url = new URL(req.url);
   const method = req.method;
   const isPreciseLocationPath = url.pathname === PRECISE_LOCATION_PATH;
@@ -187,7 +189,7 @@ async function logHit(
   db: ReturnType<typeof getDb>,
   pathname: string,
   method: string,
-  context: Context,
+  context: RequestContext,
   userAgent: string | null,
   username: string | null,
   password: string | null
@@ -221,5 +223,3 @@ async function logHit(
     return null;
   }
 }
-
-export const config = { path: DECOY_FUNCTION_PATHS };

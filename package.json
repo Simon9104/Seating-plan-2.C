@@ -4,12 +4,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "netlify dev",
+    "dev": "vercel dev",
     "dev:local": "tsx watch scripts/dev-server.ts",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview",
     "setup:admin": "node scripts/setup-admin.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p netlify/functions/tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p api/tsconfig.json"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",
@@ -19,7 +19,6 @@
     "react-router-dom": "^6.26.2"
   },
   "devDependencies": {
-    "@netlify/functions": "^2.8.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.14.15",
     "@types/react": "^18.3.5",
@@ -27,6 +26,7 @@
     "@vitejs/plugin-react": "^6.0.3",
     "tsx": "^4.23.0",
     "typescript": "^5.5.4",
+    "vercel": "^56.3.2",
     "vite": "^8.1.3"
   }
 }

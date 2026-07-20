@@ -1,0 +1,45 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/wp-admin", "destination": "/api/decoy" },
+    { "source": "/wp-admin/:path*", "destination": "/api/decoy" },
+    { "source": "/wp-login.php", "destination": "/api/decoy" },
+    { "source": "/administrator", "destination": "/api/decoy" },
+    { "source": "/administrator/:path*", "destination": "/api/decoy" },
+    { "source": "/phpmyadmin", "destination": "/api/decoy" },
+    { "source": "/phpmyadmin/:path*", "destination": "/api/decoy" },
+    { "source": "/admin-test", "destination": "/api/decoy" },
+    { "source": "/admin-test/:path*", "destination": "/api/decoy" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "Permissions-Policy", "value": "geolocation=(), microphone=(), camera=()" },
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/admin-test",
+      "headers": [{ "key": "Permissions-Policy", "value": "geolocation=(self), microphone=(), camera=()" }]
+    }
+  ]
+}

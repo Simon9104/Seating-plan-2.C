@@ -1,6 +1,6 @@
 import { createClient, type Client } from '@libsql/client';
 
-// Keep in sync with ./schema.sql and ../../../scripts/setup-admin.mjs
+// Keep in sync with ./schema.sql and ../../scripts/setup-admin.mjs
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS admins (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,12 +92,15 @@ let schemaReady: Promise<void> | null = null;
 
 function assertSafeForEnvironment(url: string) {
   const isLocalFile = url.startsWith('file:');
-  const runningOnNetlifyDeploy = process.env.NETLIFY === 'true' && process.env.NETLIFY_DEV !== 'true';
-  if (isLocalFile && runningOnNetlifyDeploy) {
+  // Vercel sets VERCEL=1 in every Vercel-hosted context (production,
+  // preview, and `vercel dev`); our own dev-server.ts never sets it, so
+  // this only fires for an actual Vercel deployment/runtime.
+  const runningOnVercel = process.env.VERCEL === '1';
+  if (isLocalFile && runningOnVercel) {
     throw new Error(
-      'DATABASE_URL is a local "file:" database, which does not persist on Netlify Functions ' +
-        '(the filesystem is ephemeral/read-only in production). Set DATABASE_URL and ' +
-        'DATABASE_AUTH_TOKEN to a hosted libSQL database (e.g. Turso) in your Netlify site ' +
+      'DATABASE_URL is a local "file:" database, which does not persist on Vercel Serverless ' +
+        'Functions (the filesystem is ephemeral/read-only in production). Set DATABASE_URL and ' +
+        'DATABASE_AUTH_TOKEN to a hosted libSQL database (e.g. Turso) in your Vercel project ' +
         'environment variables before deploying. See README.md.'
     );
   }

@@ -1,6 +1,6 @@
-// Shared between the frontend (src/) and the Netlify Functions backend
-// (netlify/functions/) so both sides agree on the exact shape of the
-// seating-plan data.
+// Shared between the frontend (src/) and the backend (server/, deployed
+// via api/) so both sides agree on the exact shape of the seating-plan
+// data.
 
 export type Seat = 'A' | 'B';
 

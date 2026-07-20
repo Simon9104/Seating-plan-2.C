@@ -13,5 +13,5 @@
     "noUnusedParameters": true,
     "types": ["node"]
   },
-  "include": ["**/*.ts", "../../shared/**/*.ts"]
+  "include": ["**/*.ts", "../server/**/*.ts", "../shared/**/*.ts"]
 }

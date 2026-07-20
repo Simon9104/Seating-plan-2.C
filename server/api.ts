@@ -1,4 +1,4 @@
-import type { Context } from '@netlify/functions';
+import type { RequestContext } from './lib/request-context';
 import type { Client } from '@libsql/client';
 import { ensureSchema, getDb } from './lib/db';
 import {
@@ -45,7 +45,7 @@ import {
   sanitizeSubjectTeachers
 } from './lib/timetable';
 import { loadSingletonState, updateSingletonState } from './lib/singleton-state';
-import type { RoomTimetableState, TimetableState } from '../../shared/types';
+import type { RoomTimetableState, TimetableState } from '../shared/types';
 import {
   buildClearSessionCookie,
   buildSessionCookie,
@@ -137,7 +137,7 @@ function adminStateView(state: SeatingState) {
   return state;
 }
 
-export default async (req: Request, context: Context): Promise<Response> => {
+export default async (req: Request, context: RequestContext): Promise<Response> => {
   const url = new URL(req.url);
   const path = url.pathname.replace(/^\/api/, '') || '/';
   const method = req.method;
@@ -531,5 +531,3 @@ export default async (req: Request, context: Context): Promise<Response> => {
     return json(500, { error: 'Internal server error.' });
   }
 };
-
-export const config = { path: '/api/*' };

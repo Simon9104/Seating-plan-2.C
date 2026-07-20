@@ -14,7 +14,9 @@ export function parseCookies(header: string | null): Record<string, string> {
 }
 
 function isDev(): boolean {
-  return process.env.NETLIFY_DEV === 'true' || process.env.NODE_ENV === 'development';
+  // NODE_ENV covers both our own dev-server.ts (Vite sets it) and a plain
+  // `node` run; VERCEL_ENV covers `vercel dev` specifically.
+  return process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development';
 }
 
 export function buildSessionCookie(token: string, maxAgeSeconds: number): string {
@@ -81,12 +83,14 @@ export function isSameOriginRequest(req: Request): boolean {
   return true;
 }
 
-// Only ever trust Netlify's own connection-derived context.ip — never a
-// header. Headers (including ones that look like internal Netlify headers,
-// e.g. x-forwarded-for / x-nf-client-connection-ip) can be set directly by
-// whoever sends the request, so falling back to one would let an attacker
-// spoof a fresh "IP" on every request and defeat IP-based login lockout,
-// or forge the IP recorded in the audit/bot logs.
+// Only ever trust the platform adapter's own connection-derived context.ip
+// (built from Vercel's request metadata — see api/*.ts) — never read a
+// header directly here. A header (even one that looks like a trusted
+// platform header, e.g. x-forwarded-for / x-vercel-forwarded-for) can be
+// set directly by whoever sends the request if the adapter doesn't
+// sanitize it, so falling back to one blindly would let an attacker spoof
+// a fresh "IP" per request and defeat IP-based login lockout, or forge the
+// IP recorded in the audit/bot logs.
 export function clientIp(_req: Request, context: { ip?: string }): string {
   return context.ip || 'unknown';
 }

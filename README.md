@@ -26,19 +26,28 @@ A classroom seating-plan + timetable app with:
 
 Rebuilt from a Claude Design HTML/CSS/JS prototype
 (`../student-seating-arrangement-plan/`) as a real deployable app: React
-frontend + Netlify Functions backend + a shared database, so every device
-sees the same chart (the prototype used per-browser `localStorage`, which
-doesn't work once real students on real devices are involved).
+frontend + Vercel Serverless Functions backend + a shared database, so
+every device sees the same chart (the prototype used per-browser
+`localStorage`, which doesn't work once real students on real devices are
+involved).
 
 ## How it works
 
 - **Frontend**: React + Vite, built to `dist/`, served as a static site.
-- **Backend**: Netlify Functions (`netlify/functions/api.ts`), a single
-  serverless function handling `/api/*`.
+- **Backend**: Vercel Node.js Serverless Functions. The actual routing/
+  business logic lives in `server/api.ts` and `server/decoy.ts` as
+  plain `(req: Request) => Promise<Response>` handlers with zero
+  platform-specific code; `api/[...path].ts` and `api/decoy.ts` are thin
+  adapters that translate Vercel's Node.js function signature to/from
+  that (see `api/_lib/adapter.ts`) and build a platform-neutral
+  `RequestContext` (client IP + geo-IP) from Vercel's request headers
+  (see `api/_lib/vercel-context.ts`). This split is what lets
+  `scripts/dev-server.ts` run the exact same handlers locally without any
+  Vercel-specific code in the loop.
 - **Database**: [libSQL](https://turso.tech/libsql) — SQLite-compatible.
   Locally it's just a file (`local.db`), no setup needed. In production it
   must point at a hosted libSQL database (e.g. [Turso](https://turso.tech),
-  free tier is enough for this) because Netlify Functions run in a fresh,
+  free tier is enough for this) because Vercel Functions run in a fresh,
   read-only container per invocation — a local file would not persist.
 - **Auth**: bcrypt-hashed passwords, opaque random session tokens (hashed
   before being stored, so a DB leak alone can't be replayed), CSRF tokens
@@ -53,17 +62,22 @@ doesn't work once real students on real devices are involved).
 
 ```bash
 npm install
-npm install -g netlify-cli   # if you don't already have it
-netlify dev
+npx vercel login      # one-time, opens a browser to authenticate
+npx vercel link       # one-time, links this directory to a Vercel project
+npm run dev            # = vercel dev
 ```
 
-This runs the Vite frontend and the Netlify Function together at
-`http://localhost:8888`, using a local `local.db` SQLite file (created
-automatically — nothing to configure).
+`vercel dev` runs the Vite frontend and the real `api/` functions together,
+using `vercel.json`'s rewrites/headers exactly as production will — the
+most accurate way to preview the deploy locally.
 
-If `netlify-cli` won't install on your Node version, run `npm run dev:local`
-instead — a small netlify-cli-free dev server (`scripts/dev-server.ts`) that
-does the same job, and auto-restarts on file changes.
+If you don't want to link a Vercel project yet, run `npm run dev:local`
+instead — a small dev server (`scripts/dev-server.ts`) that runs the exact
+same handlers (`server/api.ts` / `server/decoy.ts`) directly, no Vercel CLI
+auth required, and auto-restarts on file changes. It won't have real geo-IP
+data (nothing does, without a real Vercel edge request) and doesn't
+exercise `vercel.json`'s routing, but everything else — auth, the seating
+chart, the timetable, the honeypot — behaves identically.
 
 Create your first admin account against the local database:
 
@@ -79,7 +93,7 @@ the admin panel itself ("Admins" section) — no need to re-run the script.
 
 Then sign in at `http://localhost:8888/admin/login`.
 
-## Deploying to Netlify
+## Deploying to Vercel
 
 1. **Create a hosted database** (Turso is the easiest fit since it speaks
    the same libSQL protocol used locally):
@@ -100,20 +114,32 @@ Then sign in at `http://localhost:8888/admin/login`.
    npm run setup:admin
    ```
 
-3. **Push this repo to GitHub/GitLab and connect it as a new Netlify site**
-   (or run `netlify deploy --prod` from the CLI). Netlify will read
-   `netlify.toml` automatically (build command, publish dir, functions dir).
+3. **Push this repo to GitHub/GitLab/Bitbucket and import it as a new
+   Vercel project** (vercel.com → Add New → Project), or run
+   `npx vercel --prod` from the CLI after `vercel link`. Vercel reads
+   `vercel.json` automatically (rewrites, headers) and auto-detects the
+   Vite build (also pinned explicitly in `vercel.json`'s `buildCommand`/
+   `outputDirectory`).
 
-4. **Set environment variables on the Netlify site** (Site configuration →
-   Environment variables):
+4. **Set environment variables on the Vercel project** (Project →
+   Settings → Environment Variables, for Production — and Preview too, if
+   you want preview deploys to work against the same data):
    - `DATABASE_URL` = `libsql://your-db.turso.io`
    - `DATABASE_AUTH_TOKEN` = the token from step 1
 
    Do **not** set `DATABASE_URL` to a `file:` path in production — the app
-   deliberately refuses to start that way (see `netlify/functions/lib/db.ts`)
-   to avoid silently losing data on an ephemeral filesystem.
+   deliberately refuses to start that way (see `server/lib/db.ts`) to avoid
+   silently losing data on an ephemeral filesystem.
 
 5. Deploy. Students visit the site root; sign in at `/admin/login`.
+
+**A note on geo-IP accuracy**: Vercel's `x-vercel-ip-*` headers only give a
+country *code* (e.g. `US`), not a full country name — `server/lib/db.ts`'s
+`bot_log` table ends up with the code in both `country_code` and
+`country_name` for entries captured this way, so the honeypot's admin view
+will show "US" rather than "United States". Cosmetic only; see
+`api/_lib/vercel-context.ts` if you want to add a code→name lookup table
+later.
 
 ### Adding/removing admins later
 
@@ -133,14 +159,16 @@ You only need `npm run setup:admin` once, to create the very first account.
 - Login responses don't reveal whether a username exists (a dummy bcrypt
   comparison runs even for unknown usernames, so timing doesn't leak it).
 - Passwords require 12+ characters with at least one letter and one digit.
-- `netlify.toml` sets `Content-Security-Policy`, `X-Frame-Options`,
+- `vercel.json` sets `Content-Security-Policy`, `X-Frame-Options`,
   `Referrer-Policy`, `HSTS`, etc. on every response.
-- **IP address is never taken from a header.** `clientIp()` only trusts
-  Netlify's own connection-derived `context.ip` — earlier it fell back to
-  an `x-nf-client-connection-ip` header, which a client can set directly,
-  letting an attacker spoof a fresh "IP" per request to defeat the
-  IP-based login lockout or forge the IP recorded in the audit/bot logs.
-  Fixed; there is no header-based fallback anymore.
+- **IP address is never taken from an arbitrary header.** `clientIp()` in
+  `server/lib/http.ts` only ever trusts the `RequestContext.ip` built by
+  the platform adapter (`api/_lib/vercel-context.ts`, from Vercel's
+  `x-real-ip`/`x-forwarded-for` — which Vercel's edge sets itself and
+  strips any client-supplied version of first) — handler code never reads
+  a header directly for this. Get this wrong and an attacker can spoof a
+  fresh "IP" per request to defeat the IP-based login lockout, or forge
+  the IP recorded in the audit/bot logs.
 - **Origin-header check as CSRF defense-in-depth.** Every state-changing
   admin request (and login/logout) additionally requires its `Origin` (or
   `Referer`) to match the site itself — on top of, not instead of, the
@@ -153,20 +181,21 @@ You only need `npm run setup:admin` once, to create the very first account.
 
 ## Bot honeypot
 
-`netlify/functions/decoy.ts` is a second, separate serverless function bound
-directly to a handful of URLs bots commonly scan for (`/wp-admin`,
-`/wp-login.php`, `/administrator`, `/phpmyadmin`, `/admin-test` — see
-`shared/decoy-paths.ts`). It's intentionally unauthenticated and public —
+`server/decoy.ts` (served in production via `api/decoy.ts`) handles a
+handful of URLs bots commonly scan for (`/wp-admin`, `/wp-login.php`,
+`/administrator`, `/phpmyadmin`, `/admin-test` — see
+`shared/decoy-paths.ts`), reached via `vercel.json` rewrites since they
+sit outside `/api/*`. It's intentionally unauthenticated and public —
 that's the point. Every request (GET or POST) is logged to a `bot_log`
-table with IP, Netlify's built-in geo-IP data (country/city/lat-lon), user
-agent, and — if the request POSTed something that looks like a login form
-(recognizing both generic `username`/`password` and WordPress's `log`/`pwd`
-field names, as JSON or form-encoded) — the submitted username and
-password. It always responds with a generic "Invalid username or
-password," never grants anything, and never touches real admin sessions.
-View captured activity at `/admin/bot-activity` (real-admin-auth
-protected, same as everything else under `/admin`). Entries older than 90
-days are pruned automatically.
+table with IP, geo-IP data (country/city/lat-lon), user agent, and — if
+the request POSTed something that looks like a login form (recognizing
+both generic `username`/`password` and WordPress's `log`/`pwd` field
+names, as JSON or form-encoded) — the submitted username and password. It
+always responds with a generic "Invalid username or password," never
+grants anything, and never touches real admin sessions. View captured
+activity at `/admin/bot-activity` (real-admin-auth protected, same as
+everything else under `/admin`). Entries older than 90 days are pruned
+automatically.
 
 Every decoy path sends `X-Robots-Tag: noindex, nofollow, noarchive` and a
 matching `<meta name="robots">` tag, and `public/robots.txt` disallows
@@ -186,22 +215,25 @@ to tamper with unrelated rows), setting `location_source = 'gps'` and
 `accuracy_m`; the admin view links straight to Google Maps for that point
 and visually distinguishes it from the IP-based estimate.
 
-Since these paths sit outside `/api/*`, in local dev the Vite proxy and
-`scripts/dev-server.ts` route them to the decoy function specifically —
-see `shared/decoy-paths.ts` for the single source of truth all three
-places (Netlify's `config.path`, the Vite proxy, and the dev server) read
-from.
+`shared/decoy-paths.ts` is the single source of truth for the path list —
+`vercel.json`'s rewrites, the Vite dev proxy, and `scripts/dev-server.ts`
+all read from it, so there's one place to add a new bait path.
 
 ## Project layout
 
 ```
-netlify/functions/api.ts          Main serverless function, routes all /api/*
-netlify/functions/decoy.ts        Honeypot function, bound to fake admin-login paths
-netlify/functions/lib/            db, auth, audit, seating/timetable/bot-log logic modules
+api/[...path].ts                  Vercel entry point, adapts to server/api.ts (all of /api/*)
+api/decoy.ts                      Vercel entry point, adapts to server/decoy.ts (honeypot)
+api/_lib/adapter.ts               Node req/res <-> Fetch Request/Response bridge
+api/_lib/vercel-context.ts        Builds RequestContext from Vercel's geo-IP/client-IP headers
+server/api.ts                     Main handler, routes all /api/* — plain (Request) => Response
+server/decoy.ts                   Honeypot handler — plain (Request) => Response
+server/lib/                       db, auth, audit, seating/timetable/bot-log logic modules
+server/lib/request-context.ts     Platform-neutral {ip, geo} shape handlers depend on
 shared/types.ts                   Types shared by frontend and backend
 shared/decoy-paths.ts             Honeypot path list (single source of truth)
 scripts/setup-admin.mjs           One-time DB schema + first-admin bootstrap
-scripts/dev-server.ts             netlify-cli-free local dev server (npm run dev:local)
+scripts/dev-server.ts             Local dev server (npm run dev:local) — no Vercel CLI needed
 src/pages/SeatingChart.tsx        Public chart + live Now/Next timetable panel
 src/pages/AdminLogin.tsx          Admin sign-in
 src/pages/AdminPanel.tsx          Admin panel (roster, rules, log, admins)

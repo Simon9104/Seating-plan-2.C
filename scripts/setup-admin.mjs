@@ -8,7 +8,7 @@ import { createClient } from '@libsql/client';
 import bcrypt from 'bcryptjs';
 import readline from 'node:readline';
 
-// Keep in sync with netlify/functions/lib/db.ts
+// Keep in sync with server/lib/db.ts
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS admins (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,8 +88,8 @@ CREATE INDEX IF NOT EXISTS idx_bot_log_country ON bot_log (country_code);
 `;
 
 // SQLite has no "ADD COLUMN IF NOT EXISTS" — same best-effort migration
-// approach as netlify/functions/lib/db.ts, for databases set up before
-// these columns existed.
+// approach as server/lib/db.ts, for databases set up before these columns
+// existed.
 const COLUMN_MIGRATIONS = [
   { table: 'bot_log', column: 'accuracy_m REAL' },
   { table: 'bot_log', column: "location_source TEXT NOT NULL DEFAULT 'ip'" }

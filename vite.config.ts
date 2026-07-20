@@ -13,7 +13,7 @@ export default defineConfig({
     proxy: {
       '/api': functionsProxy,
       // Honeypot paths also need to reach the local function server instead
-      // of falling through to the SPA — matches Netlify's routing in prod.
+      // of falling through to the SPA — matches vercel.json's rewrites.
       ...Object.fromEntries(DECOY_PATH_PREFIXES.map((p) => [p, functionsProxy]))
     }
   },

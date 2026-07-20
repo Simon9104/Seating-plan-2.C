@@ -1,17 +1,24 @@
-// Lightweight local dev server used as a fallback when `netlify dev` isn't
-// available (e.g. netlify-cli's postinstall currently breaks on very new
-// Node versions). Runs the Vite dev server and the API function together
-// in a single process, without needing the Netlify CLI at all.
+// Lightweight local dev server used instead of `vercel dev` when you don't
+// want to (or can't yet) run `vercel login` / `vercel link` — runs the Vite
+// dev server and the API handlers together in one process, no Vercel CLI
+// auth required. `vercel dev` remains the officially supported way to
+// preview the real Vercel routing (rewrites, headers) locally once the
+// project is linked; this is a same-logic stand-in for quick iteration.
 //
 // Usage: npm run dev:local
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createViteServer } from 'vite';
-import apiHandler from '../netlify/functions/api';
-import decoyHandler from '../netlify/functions/decoy';
+import apiHandler from '../server/api';
+import decoyHandler from '../server/decoy';
 import { isDecoyPath } from '../shared/decoy-paths';
+import type { RequestContext } from '../server/lib/request-context';
 
 const FUNCTIONS_PORT = 9999;
 const FRONTEND_PORT = 8888;
+
+// No real edge/geo-IP locally (same as `vercel dev` without a linked
+// project) — handlers already treat a missing geo gracefully.
+const LOCAL_CONTEXT: RequestContext = { ip: '127.0.0.1' };
 
 async function readBody(req: IncomingMessage): Promise<Buffer | undefined> {
   if (req.method === 'GET' || req.method === 'HEAD') return undefined;
@@ -39,7 +46,7 @@ async function handleFunctionRequest(req: IncomingMessage, res: ServerResponse) 
   const request = new Request(url, { method: req.method, headers, body });
 
   try {
-    const response = await handler(request, { ip: '127.0.0.1', geo: {} } as unknown as Parameters<typeof handler>[1]);
+    const response = await handler(request, LOCAL_CONTEXT);
     res.statusCode = response.status;
     response.headers.forEach((value, key) => {
       if (key.toLowerCase() !== 'set-cookie') res.setHeader(key, value);
