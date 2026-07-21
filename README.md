@@ -37,7 +37,7 @@ involved).
 - **Backend**: Vercel Node.js Serverless Functions. The actual routing/
   business logic lives in `server/api.ts` and `server/decoy.ts` as
   plain `(req: Request) => Promise<Response>` handlers with zero
-  platform-specific code; `api/[...path].ts` and `api/decoy.ts` are thin
+  platform-specific code; `api/gateway.ts` and `api/decoy.ts` are thin
   adapters that translate Vercel's Node.js function signature to/from
   that (see `api/_lib/adapter.ts`) and build a platform-neutral
   `RequestContext` (client IP + geo-IP) from Vercel's request headers
@@ -222,7 +222,7 @@ all read from it, so there's one place to add a new bait path.
 ## Project layout
 
 ```
-api/[...path].ts                  Vercel entry point, adapts to server/api.ts (all of /api/*)
+api/gateway.ts                    Vercel entry point, adapts to server/api.ts (all of /api/*, routed via vercel.json)
 api/decoy.ts                      Vercel entry point, adapts to server/decoy.ts (honeypot)
 api/_lib/adapter.ts               Node req/res <-> Fetch Request/Response bridge
 api/_lib/vercel-context.ts        Builds RequestContext from Vercel's geo-IP/client-IP headers

@@ -34,6 +34,7 @@
     { "src": "^/administrator(/.*)?$", "dest": "/api/decoy" },
     { "src": "^/phpmyadmin(/.*)?$", "dest": "/api/decoy" },
     { "src": "^/admin-test(/.*)?$", "dest": "/api/decoy" },
+    { "src": "^/api/.*$", "dest": "/api/gateway" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
