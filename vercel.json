@@ -11,7 +11,7 @@
     { "source": "/phpmyadmin/:path*", "destination": "/api/decoy" },
     { "source": "/admin-test", "destination": "/api/decoy" },
     { "source": "/admin-test/:path*", "destination": "/api/decoy" },
-    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/api/:path*", "destination": "/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
