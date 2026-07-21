@@ -11,9 +11,9 @@ import {
   type Rule,
   type HistoryEntry,
   type SeatingState
-} from '../../shared/types';
+} from '../../shared/types.js';
 
-export type { Seat, Rule, AvoidPair, HistoryEntry, SeatingState } from '../../shared/types';
+export type { Seat, Rule, AvoidPair, HistoryEntry, SeatingState } from '../../shared/types.js';
 export { SEAT_COUNT, TABLE_COUNT, MAX_HISTORY };
 
 export function emptyState(): SeatingState {

@@ -1,6 +1,6 @@
-import type { RequestContext } from './lib/request-context';
+import type { RequestContext } from './lib/request-context.js';
 import type { Client } from '@libsql/client';
-import { ensureSchema, getDb } from './lib/db';
+import { ensureSchema, getDb } from './lib/db.js';
 import {
   createSession,
   destroySession,
@@ -16,9 +16,9 @@ import {
   csrfMatches,
   countAdmins,
   SESSION_TTL_SECONDS
-} from './lib/auth';
-import { logAction, listAuditLog } from './lib/audit';
-import { botLogCountrySummary, botLogTotalCount, listBotLog } from './lib/bot-log';
+} from './lib/auth.js';
+import { logAction, listAuditLog } from './lib/audit.js';
+import { botLogCountrySummary, botLogTotalCount, listBotLog } from './lib/bot-log.js';
 import {
   addAvoidPair,
   addRule,
@@ -30,7 +30,7 @@ import {
   shuffle,
   swapSeats,
   type SeatingState
-} from './lib/seating';
+} from './lib/seating.js';
 import {
   defaultRoomTimetableState,
   defaultTimetableState,
@@ -43,9 +43,9 @@ import {
   sanitizeRoomGrid,
   sanitizeSplitGrid,
   sanitizeSubjectTeachers
-} from './lib/timetable';
-import { loadSingletonState, updateSingletonState } from './lib/singleton-state';
-import type { RoomTimetableState, TimetableState } from '../shared/types';
+} from './lib/timetable.js';
+import { loadSingletonState, updateSingletonState } from './lib/singleton-state.js';
+import type { RoomTimetableState, TimetableState } from '../shared/types.js';
 import {
   buildClearSessionCookie,
   buildSessionCookie,
@@ -55,7 +55,7 @@ import {
   noContent,
   parseCookies,
   SESSION_COOKIE
-} from './lib/http';
+} from './lib/http.js';
 
 async function loadState(db: Client) {
   return loadSingletonState(db, 'seating_state', emptyState);

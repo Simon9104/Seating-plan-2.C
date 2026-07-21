@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import apiHandler from '../server/api';
-import { runFetchHandler } from './_lib/adapter';
-import { buildRequestContext } from './_lib/vercel-context';
+import apiHandler from '../server/api.js';
+import { runFetchHandler } from './_lib/adapter.js';
+import { buildRequestContext } from './_lib/vercel-context.js';
 
 // Vercel catch-all: every request under /api/* lands here (see
 // server/api.ts for the actual routing/logic — this file only adapts

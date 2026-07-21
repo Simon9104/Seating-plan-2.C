@@ -1,6 +1,6 @@
-import type { RequestContext } from './lib/request-context';
-import { ensureSchema, getDb } from './lib/db';
-import { PRECISE_LOCATION_PATH } from '../shared/decoy-paths';
+import type { RequestContext } from './lib/request-context.js';
+import { ensureSchema, getDb } from './lib/db.js';
+import { PRECISE_LOCATION_PATH } from '../shared/decoy-paths.js';
 
 // Honeypot: bound to common CMS admin-login paths (see shared/decoy-paths.ts)
 // so scanning bots that probe for them get served a plausible-looking fake

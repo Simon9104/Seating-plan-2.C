@@ -1,5 +1,5 @@
 import type { Client } from '@libsql/client';
-import type { BotLogCountrySummary, BotLogEntry } from '../../shared/types';
+import type { BotLogCountrySummary, BotLogEntry } from '../../shared/types.js';
 
 interface BotLogRow {
   id: number;

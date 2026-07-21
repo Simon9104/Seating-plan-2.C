@@ -15,7 +15,7 @@ import {
   type RoomTimetableState,
   type TimetableGroup,
   type TimetableState
-} from '../../shared/types';
+} from '../../shared/types.js';
 
 const MAX_TEXT = 60;
 

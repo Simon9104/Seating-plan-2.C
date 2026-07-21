@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import decoyHandler from '../server/decoy';
-import { runFetchHandler } from './_lib/adapter';
-import { buildRequestContext } from './_lib/vercel-context';
+import decoyHandler from '../server/decoy.js';
+import { runFetchHandler } from './_lib/adapter.js';
+import { buildRequestContext } from './_lib/vercel-context.js';
 
 // The honeypot's actual endpoint. Not reached directly by its public-facing
 // URLs (/wp-admin, /admin-test, etc.) — vercel.json rewrites those to here.

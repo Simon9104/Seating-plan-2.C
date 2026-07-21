@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'node:http';
-import type { RequestContext } from '../../server/lib/request-context';
+import type { RequestContext } from '../../server/lib/request-context.js';
 
 // Vercel's edge network sets these headers on every request it proxies to a
 // Function, and — like Netlify's equivalent x-nf-* headers before it —
