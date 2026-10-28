@@ -174,9 +174,9 @@ export default function SeatingChart() {
               Teacher
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${TABLE_COLUMNS.length}, 1fr)`, gap: 24, alignItems: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${TABLE_COLUMNS.length}, 1fr)`, gap: 24 }}>
             {TABLE_COLUMNS.map((column, c) => (
-              <div key={c} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              <div key={c} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 24 }}>
                 {column.map((i) => tables[i]).map((t) => (
               <div
                 key={t.id}

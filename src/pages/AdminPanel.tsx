@@ -598,9 +598,9 @@ export default function AdminPanel({
             </div>
           </div>
           <div style={{ position: 'relative' }} ref={wrapRef}>
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${TABLE_COLUMNS.length}, 1fr)`, gap: 24, alignItems: 'start' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${TABLE_COLUMNS.length}, 1fr)`, gap: 24 }}>
               {TABLE_COLUMNS.map((column, c) => (
-              <div key={c} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              <div key={c} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 24 }}>
               {column.map((i) => {
                 const label = state.labelStyle === 'letters' ? String.fromCharCode(65 + i) : String(i + 1);
                 const aIdx = i * 2;
