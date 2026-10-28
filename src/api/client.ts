@@ -57,6 +57,10 @@ export const api = {
   toggleLock: (names?: string[]) =>
     request<SeatingState>('/admin/roster/lock', { method: 'POST', body: JSON.stringify(names ? { names } : {}) }),
   shuffle: () => request<SeatingState>('/admin/shuffle', { method: 'POST' }),
+  shufflePairs: () => request<SeatingState>('/admin/shuffle-pairs', { method: 'POST' }),
+  addFixedPair: (a: string, b: string) =>
+    request<SeatingState>('/admin/fixed-pairs', { method: 'POST', body: JSON.stringify({ a, b }) }),
+  removeFixedPair: (id: number) => request<SeatingState>(`/admin/fixed-pairs/${id}`, { method: 'DELETE' }),
   rotate: () => request<SeatingState>('/admin/rotate', { method: 'POST' }),
   clearHistory: () => request<SeatingState>('/admin/clear-history', { method: 'POST' }),
   saveDefault: () => request<SeatingState>('/admin/default/save', { method: 'POST' }),

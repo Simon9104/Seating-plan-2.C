@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import { colors, fontFamily } from '../theme';
-import type { AdminSummary, AuditEntry, SeatingState } from '../../shared/types';
+import { TABLE_COLUMNS, type AdminSummary, type AuditEntry, type SeatingState } from '../../shared/types';
 
 const AUDIT_PAGE_SIZE = 50;
 
@@ -43,6 +43,8 @@ export default function AdminPanel({
   const [newRuleSeat, setNewRuleSeat] = useState<'A' | 'B'>('A');
   const [newPairA, setNewPairA] = useState('');
   const [newPairB, setNewPairB] = useState('');
+  const [newFixedA, setNewFixedA] = useState('');
+  const [newFixedB, setNewFixedB] = useState('');
   const [watchedStudent, setWatchedStudent] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -238,6 +240,8 @@ export default function AdminPanel({
   const availableNames = state.names.filter((n) => n && state.rules.every((r) => r.name !== n));
   const pairNames = state.names.filter(Boolean);
   const watchOptions = state.names.filter(Boolean);
+  const fixedPairs = state.fixedPairs || [];
+  const unpairedNames = pairNames.filter((n) => fixedPairs.every((p) => p.a !== n && p.b !== n));
   const isSpotlight = (n: string) => !!n && n.trim().toLowerCase() === 'simon';
 
   return (
@@ -323,6 +327,14 @@ export default function AdminPanel({
             Rotate seats
           </button>
         </div>
+        <button
+          title="Each fixed pair moves together to a random table; everyone else is shuffled around them"
+          onClick={() => { run(() => api.shufflePairs(), 'Shuffled pairs ✓'); flashNow(); }}
+          disabled={busy || fixedPairs.length === 0}
+          style={{ ...primaryButtonStyle, background: colors.rotateBlue, opacity: fixedPairs.length === 0 ? 0.5 : 1 }}
+        >
+          Shuffle pairs
+        </button>
         <button onClick={() => run(() => api.clearHistory(), 'Seating history cleared ✓')} disabled={busy} style={secondaryButtonStyle}>
           Clear
         </button>
@@ -390,6 +402,43 @@ export default function AdminPanel({
                 setNewRuleName('');
                 setNewRuleTable(1);
                 setNewRuleSeat('A');
+              }}
+              style={addButtonStyle}
+            >
+              Add
+            </button>
+          </div>
+        </div>
+
+        <div style={sectionBlockStyle}>
+          <div style={sectionLabelStyle}>Rules</div>
+          <div style={sectionTitleStyle}>Fixed pairs</div>
+          <div style={sectionHintStyle}>These two always share a table. "Shuffle pairs" moves each pair together to a random table.</div>
+          {fixedPairs.map((p) => (
+            <div key={p.id} style={ruleRowStyle}>
+              <span style={{ flex: 1 }}>{p.a} + {p.b}</span>
+              <button onClick={() => run(() => api.removeFixedPair(p.id), 'Saved to main chart')} style={removeButtonStyle}>×</button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+            <select value={newFixedA} onChange={(e) => setNewFixedA(e.target.value)} style={selectFlexStyle}>
+              <option value="">Student…</option>
+              {unpairedNames.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <select value={newFixedB} onChange={(e) => setNewFixedB(e.target.value)} style={selectFlexStyle}>
+              <option value="">Student…</option>
+              {unpairedNames.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                if (!newFixedA || !newFixedB || newFixedA === newFixedB) return;
+                run(() => api.addFixedPair(newFixedA, newFixedB), 'Saved to main chart');
+                setNewFixedA('');
+                setNewFixedB('');
               }}
               style={addButtonStyle}
             >
@@ -549,8 +598,10 @@ export default function AdminPanel({
             </div>
           </div>
           <div style={{ position: 'relative' }} ref={wrapRef}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
-              {Array.from({ length: 15 }, (_, i) => i).map((i) => {
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${TABLE_COLUMNS.length}, 1fr)`, gap: 24, alignItems: 'start' }}>
+              {TABLE_COLUMNS.map((column, c) => (
+              <div key={c} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              {column.map((i) => {
                 const label = state.labelStyle === 'letters' ? String.fromCharCode(65 + i) : String(i + 1);
                 const aIdx = i * 2;
                 const bIdx = i * 2 + 1;
@@ -582,6 +633,8 @@ export default function AdminPanel({
                   </div>
                 );
               })}
+              </div>
+              ))}
             </div>
             <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
               {lines.map((ln) => (
@@ -691,6 +744,9 @@ function formatAction(action: string): string {
     roster_unlocked: 'unlocked the roster',
     shuffle: 'ran a random shuffle',
     rotate_seats: 'rotated seats',
+    shuffle_pairs: 'shuffled fixed pairs',
+    add_fixed_pair: 'added a fixed pair',
+    remove_fixed_pair: 'removed a fixed pair',
     clear_history: 'cleared seating history',
     save_default: 'saved default seating',
     reset_default: 'reset to default seating',

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { colors, fontFamily } from '../theme';
 import { computeSchedule } from '../schedule';
-import type { PublicSeating, RoomTimetableState, TimetableState } from '../../shared/types';
+import { TABLE_COLUMNS, type PublicSeating, type RoomTimetableState, type TimetableState } from '../../shared/types';
 
 const POLL_MS = 4000;
 const TIMETABLE_POLL_MS = 30000;
@@ -67,7 +67,7 @@ export default function SeatingChart() {
   const schedule = computeSchedule(timetable, room, now);
   const currentTime = now.toLocaleTimeString('en-GB');
 
-  const tables = [];
+  const tables: { id: number; label: string; a: string; b: string }[] = [];
   for (let i = 0; i < 15; i++) {
     const label = labelStyle === 'letters' ? String.fromCharCode(65 + i) : String(i + 1);
     tables.push({
@@ -174,8 +174,10 @@ export default function SeatingChart() {
               Teacher
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
-            {tables.map((t) => (
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${TABLE_COLUMNS.length}, 1fr)`, gap: 24, alignItems: 'start' }}>
+            {TABLE_COLUMNS.map((column, c) => (
+              <div key={c} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                {column.map((i) => tables[i]).map((t) => (
               <div
                 key={t.id}
                 style={{
@@ -200,6 +202,8 @@ export default function SeatingChart() {
                   <SeatCell text={t.a} />
                   <SeatCell text={t.b} />
                 </div>
+              </div>
+                ))}
               </div>
             ))}
           </div>

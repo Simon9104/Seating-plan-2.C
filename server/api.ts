@@ -21,13 +21,16 @@ import { logAction, listAuditLog } from './lib/audit.js';
 import { botLogCountrySummary, botLogTotalCount, listBotLog } from './lib/bot-log.js';
 import {
   addAvoidPair,
+  addFixedPair,
   addRule,
   emptyState,
   removeAvoidPair,
+  removeFixedPair,
   removeRule,
   rotateSeats,
   sanitizeNames,
   shuffle,
+  shufflePairs,
   swapSeats,
   type SeatingState
 } from './lib/seating.js';
@@ -259,6 +262,50 @@ export default async (req: Request, context: RequestContext): Promise<Response> 
           return { ...s, seats: result.seats, pairHistory: result.pairHistory, history: result.history };
         });
         await logAction(db, adminUsername, 'shuffle', violated ? 'Some repeat tablemates were unavoidable' : 'No repeat tablemates', ip);
+        return json(200, adminStateView(state));
+      }
+
+      if (path === '/admin/shuffle-pairs' && method === 'POST') {
+        let placed = 0;
+        const state = await updateState(db, adminUsername, (s) => {
+          const result = shufflePairs(s);
+          placed = result.placedPairs;
+          return { ...s, seats: result.seats, pairHistory: result.pairHistory, history: result.history };
+        });
+        await logAction(db, adminUsername, 'shuffle_pairs', `${placed} pair${placed === 1 ? '' : 's'} moved together`, ip);
+        return json(200, adminStateView(state));
+      }
+
+      if (path === '/admin/fixed-pairs' && method === 'POST') {
+        const body = await readJson<{ a?: string; b?: string }>(req);
+        const a = (body?.a || '').trim();
+        const b = (body?.b || '').trim();
+        if (!a || !b || a === b) return json(400, { error: 'Two different students are required.' });
+        let rejected = false;
+        const state = await updateState(db, adminUsername, (s) => {
+          if (s.names.indexOf(a) === -1 || s.names.indexOf(b) === -1) {
+            rejected = true;
+            return s;
+          }
+          const next = addFixedPair(s, a, b);
+          rejected = !next;
+          return next ? { ...s, fixedPairs: next } : s;
+        });
+        if (rejected) return json(400, { error: 'Each student can only be in one pair.' });
+        await logAction(db, adminUsername, 'add_fixed_pair', `${a} + ${b}`, ip);
+        return json(200, adminStateView(state));
+      }
+
+      const fixedPairDeleteMatch = path.match(/^\/admin\/fixed-pairs\/(\d+)$/);
+      if (fixedPairDeleteMatch && method === 'DELETE') {
+        const id = Number(fixedPairDeleteMatch[1]);
+        let label = '';
+        const state = await updateState(db, adminUsername, (s) => {
+          const pair = (s.fixedPairs || []).find((p) => p.id === id);
+          if (pair) label = `${pair.a} + ${pair.b}`;
+          return { ...s, fixedPairs: removeFixedPair(s, id) };
+        });
+        await logAction(db, adminUsername, 'remove_fixed_pair', label || `pair ${id}`, ip);
         return json(200, adminStateView(state));
       }
 

@@ -17,6 +17,14 @@ export interface AvoidPair {
   b: string;
 }
 
+// Two students who always sit together at one table. "Shuffle pairs" moves
+// each pair as a unit to a random table.
+export interface FixedPair {
+  id: number;
+  a: string;
+  b: string;
+}
+
 export interface HistoryEntry {
   id: number;
   timestamp: number;
@@ -28,6 +36,8 @@ export interface SeatingState {
   seats: string[];
   rules: Rule[];
   avoidPairs: AvoidPair[];
+  // Optional: states saved before this field existed don't have it.
+  fixedPairs?: FixedPair[];
   pairHistory: Record<string, boolean>;
   history: HistoryEntry[];
   defaultSeats: string[] | null;
@@ -85,6 +95,15 @@ export interface BotLogCountrySummary {
 export const SEAT_COUNT = 30;
 export const TABLE_COUNT = 15;
 export const MAX_HISTORY = 20;
+
+// Room layout: three columns of tables, left to right, front to back.
+// Left has 6 tables, middle 5, right 4. Values are 0-based table indexes;
+// tables are numbered row by row across the room (1 2 3 / 4 5 6 / ...).
+export const TABLE_COLUMNS: number[][] = [
+  [0, 3, 6, 9, 12, 14],
+  [1, 4, 7, 10, 13],
+  [2, 5, 8, 11]
+];
 
 // ---- Timetable ----
 
