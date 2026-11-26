@@ -25,6 +25,13 @@ export interface FixedPair {
   b: string;
 }
 
+export type SeatingMode = 'individual' | 'pairs';
+
+export interface PairLogEntry {
+  timestamp: number;
+  table: number; // 0-based
+}
+
 export interface HistoryEntry {
   id: number;
   timestamp: number;
@@ -41,6 +48,11 @@ export interface SeatingState {
   // Pair mode: tables (0-based) each fixed pair has sat at in its current
   // round, keyed by pairKey(a, b). Optional for the same reason.
   pairTables?: Record<string, number[]>;
+  // Pair mode: every table each fixed pair was moved to, oldest first,
+  // capped at MAX_PAIR_LOG per pair. Unlike pairTables it survives "Clear".
+  pairLog?: Record<string, PairLogEntry[]>;
+  // Which admin tools are shown: individual shuffles or fixed-pair shuffles.
+  mode?: SeatingMode;
   pairHistory: Record<string, boolean>;
   history: HistoryEntry[];
   defaultSeats: string[] | null;
@@ -98,6 +110,7 @@ export interface BotLogCountrySummary {
 export const SEAT_COUNT = 30;
 export const TABLE_COUNT = 15;
 export const MAX_HISTORY = 20;
+export const MAX_PAIR_LOG = 200;
 
 // Room layout: three columns of tables, left to right, front to back.
 // Left has 6 tables, middle 5, right 4. Values are 0-based table indexes;

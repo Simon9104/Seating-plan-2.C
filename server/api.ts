@@ -272,10 +272,19 @@ export default async (req: Request, context: RequestContext): Promise<Response> 
           const result = shufflePairs(s);
           placed = result.placedPairs;
           newRounds = result.newRounds;
-          return { ...s, seats: result.seats, history: result.history, pairTables: result.pairTables };
+          return { ...s, seats: result.seats, history: result.history, pairTables: result.pairTables, pairLog: result.pairLog };
         });
         const details = `${placed} pair${placed === 1 ? '' : 's'} moved together` + (newRounds ? `, ${newRounds} started a new round` : '');
         await logAction(db, adminUsername, 'shuffle_pairs', details, ip);
+        return json(200, adminStateView(state));
+      }
+
+      if (path === '/admin/mode' && method === 'POST') {
+        const body = await readJson<{ mode?: string }>(req);
+        const mode = body?.mode;
+        if (mode !== 'individual' && mode !== 'pairs') return json(400, { error: 'Unknown mode.' });
+        const state = await updateState(db, adminUsername, (s) => ({ ...s, mode }));
+        await logAction(db, adminUsername, 'set_mode', mode === 'pairs' ? 'Pairs' : 'Individual', ip);
         return json(200, adminStateView(state));
       }
 

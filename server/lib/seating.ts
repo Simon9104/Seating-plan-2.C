@@ -6,11 +6,13 @@ import {
   SEAT_COUNT,
   TABLE_COUNT,
   MAX_HISTORY,
+  MAX_PAIR_LOG,
   type Seat,
   type AvoidPair,
   type FixedPair,
   type Rule,
   type HistoryEntry,
+  type PairLogEntry,
   type SeatingState
 } from '../../shared/types.js';
 
@@ -25,6 +27,8 @@ export function emptyState(): SeatingState {
     avoidPairs: [],
     fixedPairs: [],
     pairTables: {},
+    pairLog: {},
+    mode: 'individual',
     pairHistory: {},
     history: [],
     defaultSeats: null,
@@ -230,6 +234,7 @@ export function shufflePairs(state: SeatingState): {
   seats: string[];
   history: HistoryEntry[];
   pairTables: Record<string, number[]>;
+  pairLog: Record<string, PairLogEntry[]>;
   placedPairs: number;
   newRounds: number;
 } {
@@ -286,6 +291,8 @@ export function shufflePairs(state: SeatingState): {
     seats[slotIndex(r.table, r.seat)] = r.name;
   });
   const pairTables: Record<string, number[]> = {};
+  const pairLog: Record<string, PairLogEntry[]> = { ...(state.pairLog || {}) };
+  const now = Date.now();
   const placed: string[] = [];
   pairs.forEach((p, i) => {
     const t = freeTables[assignment![i]];
@@ -293,7 +300,9 @@ export function shufflePairs(state: SeatingState): {
     seats[t * 2] = first;
     seats[t * 2 + 1] = second;
     placed.push(p.a, p.b);
-    pairTables[pairKey(p.a, p.b)] = Array.from(visited[i]).concat([t]);
+    const key = pairKey(p.a, p.b);
+    pairTables[key] = Array.from(visited[i]).concat([t]);
+    pairLog[key] = (pairLog[key] || []).concat([{ timestamp: now, table: t }]).slice(-MAX_PAIR_LOG);
   });
 
   // Singles: random, preferring that nobody keeps their current seat.
@@ -316,10 +325,10 @@ export function shufflePairs(state: SeatingState): {
     seats[seat] = bestPool[k] || '';
   });
 
-  const historyEntry: HistoryEntry = { id: Date.now(), timestamp: Date.now(), seats: seats.slice() };
+  const historyEntry: HistoryEntry = { id: now, timestamp: now, seats: seats.slice() };
   const history = [historyEntry, ...state.history].slice(0, MAX_HISTORY);
 
-  return { seats, history, pairTables, placedPairs: pairs.length, newRounds };
+  return { seats, history, pairTables, pairLog, placedPairs: pairs.length, newRounds };
 }
 
 // A student can belong to at most one fixed pair.
@@ -331,11 +340,18 @@ export function addFixedPair(state: SeatingState, a: string, b: string): FixedPa
   return pairs.concat([{ id: Date.now(), a, b }]);
 }
 
-export function removeFixedPair(state: SeatingState, id: number): { fixedPairs: FixedPair[]; pairTables: Record<string, number[]> } {
+export function removeFixedPair(
+  state: SeatingState,
+  id: number
+): { fixedPairs: FixedPair[]; pairTables: Record<string, number[]>; pairLog: Record<string, PairLogEntry[]> } {
   const pair = (state.fixedPairs || []).find((p) => p.id === id);
   const pairTables = { ...(state.pairTables || {}) };
-  if (pair) delete pairTables[pairKey(pair.a, pair.b)];
-  return { fixedPairs: (state.fixedPairs || []).filter((p) => p.id !== id), pairTables };
+  const pairLog = { ...(state.pairLog || {}) };
+  if (pair) {
+    delete pairTables[pairKey(pair.a, pair.b)];
+    delete pairLog[pairKey(pair.a, pair.b)];
+  }
+  return { fixedPairs: (state.fixedPairs || []).filter((p) => p.id !== id), pairTables, pairLog };
 }
 
 export function addRule(state: SeatingState, name: string, table: number, seat: Seat): { rules: Rule[]; seats: string[] } {

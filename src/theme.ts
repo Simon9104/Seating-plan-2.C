@@ -24,6 +24,9 @@ export const colors = {
   defaultEnabledBg: '#dbe4f0',
   defaultDisabledBg: '#f0f0ee',
   watchLine: '#3fae5c',
+  pairVisitedBg: '#eef3f8',
+  pairVisitedBorder: '#8fa8c0',
+  pairSelectedBg: '#f4f7fa',
   danger: '#b00020'
 };
 

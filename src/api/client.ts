@@ -5,6 +5,7 @@ import type {
   BotLogEntry,
   PublicSeating,
   RoomTimetableState,
+  SeatingMode,
   SeatingState,
   TimetableState
 } from '../../shared/types';
@@ -57,6 +58,7 @@ export const api = {
   toggleLock: (names?: string[]) =>
     request<SeatingState>('/admin/roster/lock', { method: 'POST', body: JSON.stringify(names ? { names } : {}) }),
   shuffle: () => request<SeatingState>('/admin/shuffle', { method: 'POST' }),
+  setMode: (mode: SeatingMode) => request<SeatingState>('/admin/mode', { method: 'POST', body: JSON.stringify({ mode }) }),
   shufflePairs: () => request<SeatingState>('/admin/shuffle-pairs', { method: 'POST' }),
   addFixedPair: (a: string, b: string) =>
     request<SeatingState>('/admin/fixed-pairs', { method: 'POST', body: JSON.stringify({ a, b }) }),

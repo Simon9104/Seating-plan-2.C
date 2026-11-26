@@ -3,7 +3,8 @@
 // Run with: npm run test:pairs
 
 import assert from 'node:assert/strict';
-import { assignPairTables, emptyState, pairKey, shufflePairs, type SeatingState } from '../server/lib/seating.js';
+import { assignPairTables, emptyState, pairKey, removeFixedPair, shufflePairs, type SeatingState } from '../server/lib/seating.js';
+import { MAX_PAIR_LOG } from '../shared/types.js';
 
 // 30 students S0..S29 sitting in order; pairs (S0,S1), (S2,S3), ... for the
 // first `pairCount` tables.
@@ -17,7 +18,7 @@ function makeState(pairCount: number): SeatingState {
 
 function apply(s: SeatingState) {
   const r = shufflePairs(s);
-  return { state: { ...s, seats: r.seats, history: r.history, pairTables: r.pairTables }, result: r };
+  return { state: { ...s, seats: r.seats, history: r.history, pairTables: r.pairTables, pairLog: r.pairLog }, result: r };
 }
 
 const tableOf = (s: SeatingState, name: string) => Math.floor(s.seats.indexOf(name) / 2);
@@ -203,6 +204,26 @@ test('more pairs than free tables: the extra pairs sit as singles, nobody is los
     assert.equal(state.seats[0], 'S0');
     assert.equal(state.seats[5], 'S5');
   }
+});
+
+test('pair history log: one entry per shuffle with the new table, capped, removed with the pair', () => {
+  let s = makeState(15);
+  for (let k = 1; k <= 20; k++) {
+    s = apply(s).state;
+    s.fixedPairs!.forEach((p) => {
+      const log = s.pairLog![pairKey(p.a, p.b)];
+      assert.equal(log.length, k, 'one log entry per shuffle');
+      assert.equal(log[log.length - 1].table, tableOf(s, p.a), 'latest entry is the table it now sits at');
+    });
+  }
+  const key = pairKey('S0', 'S1');
+  s.pairLog = { ...s.pairLog, [key]: Array.from({ length: MAX_PAIR_LOG }, (_, i) => ({ timestamp: i, table: 0 })) };
+  s = apply(s).state;
+  assert.equal(s.pairLog![key].length, MAX_PAIR_LOG, 'log is capped');
+  assert.equal(s.pairLog![key][0].timestamp, 1, 'oldest entry dropped first');
+  const removed = removeFixedPair(s, 1);
+  assert.ok(!(key in removed.pairLog) && !(key in removed.pairTables), 'removing a pair drops its history');
+  assert.ok(pairKey('S2', 'S3') in removed.pairLog, 'other pairs keep theirs');
 });
 
 console.log(`\nAll ${passed} pair-mode tests passed.`);

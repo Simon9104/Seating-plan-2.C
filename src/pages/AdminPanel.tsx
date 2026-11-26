@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import { colors, fontFamily } from '../theme';
-import { TABLE_COLUMNS, type AdminSummary, type AuditEntry, type SeatingState } from '../../shared/types';
+import { TABLE_COLUMNS, type AdminSummary, type AuditEntry, type SeatingMode, type SeatingState } from '../../shared/types';
 
 const AUDIT_PAGE_SIZE = 50;
 
@@ -45,6 +45,7 @@ export default function AdminPanel({
   const [newPairB, setNewPairB] = useState('');
   const [newFixedA, setNewFixedA] = useState('');
   const [newFixedB, setNewFixedB] = useState('');
+  const [selectedPairId, setSelectedPairId] = useState<number | null>(null);
   const [watchedStudent, setWatchedStudent] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -241,6 +242,19 @@ export default function AdminPanel({
   const pairNames = state.names.filter(Boolean);
   const watchOptions = state.names.filter(Boolean);
   const fixedPairs = state.fixedPairs || [];
+  const mode: SeatingMode = state.mode || 'individual';
+  const isPairs = mode === 'pairs';
+  const keyOf = (a: string, b: string) => (a < b ? a + '|' + b : b + '|' + a);
+  const tableLabel = (t: number) => (state.labelStyle === 'letters' ? String.fromCharCode(65 + t) : String(t + 1));
+  const selectedPair = isPairs ? fixedPairs.find((p) => p.id === selectedPairId) || null : null;
+  const selectedRound = selectedPair ? state.pairTables?.[keyOf(selectedPair.a, selectedPair.b)] || [] : [];
+  const selectedLog = selectedPair ? (state.pairLog?.[keyOf(selectedPair.a, selectedPair.b)] || []).slice().reverse() : [];
+  const selectedNow = (() => {
+    if (!selectedPair) return -1;
+    const ia = state.seats.indexOf(selectedPair.a);
+    const ib = state.seats.indexOf(selectedPair.b);
+    return ia !== -1 && Math.floor(ia / 2) === Math.floor(ib / 2) ? Math.floor(ia / 2) : -1;
+  })();
   const freeTableCount = Array.from({ length: 15 }, (_, t) => t).filter((t) => !lockedSlots[t * 2] && !lockedSlots[t * 2 + 1]).length;
   const unpairedNames = pairNames.filter((n) => fixedPairs.every((p) => p.a !== n && p.b !== n));
   const isSpotlight = (n: string) => !!n && n.trim().toLowerCase() === 'simon';
@@ -283,6 +297,26 @@ export default function AdminPanel({
           <button onClick={handleLogout} style={linkButtonStyle}>Sign out</button>
         </div>
 
+        <div role="radiogroup" aria-label="Seating mode" style={modeToggleStyle}>
+          {(['individual', 'pairs'] as SeatingMode[]).map((m) => (
+            <button
+              key={m}
+              role="radio"
+              aria-checked={mode === m}
+              onClick={() => mode !== m && run(() => api.setMode(m), m === 'pairs' ? 'Pairs mode ✓' : 'Individual mode ✓')}
+              disabled={busy}
+              style={{
+                ...modeButtonStyle,
+                background: mode === m ? colors.text : 'transparent',
+                color: mode === m ? '#fff' : colors.labelMuted,
+                fontWeight: mode === m ? 600 : 400
+              }}
+            >
+              {m === 'pairs' ? 'Pairs' : 'Individual'}
+            </button>
+          ))}
+        </div>
+
         <div
           style={{
             display: 'grid',
@@ -315,6 +349,7 @@ export default function AdminPanel({
         </button>
         <div style={{ fontSize: 13, color: colors.textMuted }}>{nameCount} of 30 seats filled</div>
 
+        {!isPairs && (
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={() => { run(() => api.shuffle(), 'Shuffled ✓'); flashNow(); }} disabled={busy} style={{ ...primaryButtonStyle, flex: 1 }}>
             Random shuffle
@@ -328,6 +363,8 @@ export default function AdminPanel({
             Rotate seats
           </button>
         </div>
+        )}
+        {isPairs && (
         <button
           title="Each fixed pair moves together to a random table; everyone else is shuffled around them"
           onClick={() => { run(() => api.shufflePairs(), 'Shuffled pairs ✓'); flashNow(); }}
@@ -336,6 +373,7 @@ export default function AdminPanel({
         >
           Shuffle pairs
         </button>
+        )}
         <button onClick={() => run(() => api.clearHistory(), 'Seating history cleared ✓')} disabled={busy} style={secondaryButtonStyle}>
           Clear
         </button>
@@ -411,6 +449,7 @@ export default function AdminPanel({
           </div>
         </div>
 
+        {isPairs && (
         <div style={sectionBlockStyle}>
           <div style={sectionLabelStyle}>Rules</div>
           <div style={sectionTitleStyle}>Fixed pairs</div>
@@ -418,15 +457,46 @@ export default function AdminPanel({
             These two always share a table. "Shuffle pairs" moves each pair together to a random table it hasn't sat at
             yet this round — keep-apart rules and tablemate history are ignored, locked seats stay put.
           </div>
-          {fixedPairs.map((p) => (
-            <div key={p.id} style={ruleRowStyle}>
-              <span style={{ flex: 1 }}>{p.a} + {p.b}</span>
-              <span title="Tables this pair has sat at in the current round" style={{ fontSize: 12, color: colors.textFaint, fontVariantNumeric: 'tabular-nums' }}>
-                {(state.pairTables?.[p.a < p.b ? p.a + '|' + p.b : p.b + '|' + p.a] || []).length} / {freeTableCount}
-              </span>
-              <button onClick={() => run(() => api.removeFixedPair(p.id), 'Saved to main chart')} style={removeButtonStyle}>×</button>
-            </div>
-          ))}
+          <div style={{ ...sectionHintStyle, marginTop: -4 }}>Click a pair to see where it has sat.</div>
+          {fixedPairs.map((p) => {
+            const open = selectedPair?.id === p.id;
+            return (
+              <div key={p.id}>
+                <div style={{ ...ruleRowStyle, background: open ? colors.pairSelectedBg : undefined }}>
+                  <button
+                    aria-expanded={open}
+                    onClick={() => setSelectedPairId(open ? null : p.id)}
+                    style={pairRowButtonStyle}
+                  >
+                    <span style={{ color: colors.textFaint, fontSize: 10, width: 10 }}>{open ? '▾' : '▸'}</span>
+                    <span style={{ flex: 1 }}>{p.a} + {p.b}</span>
+                    <span title="Tables this pair has sat at in the current round" style={{ fontSize: 12, color: colors.textFaint, fontVariantNumeric: 'tabular-nums' }}>
+                      {(state.pairTables?.[keyOf(p.a, p.b)] || []).length} / {freeTableCount}
+                    </span>
+                  </button>
+                  <button onClick={() => run(() => api.removeFixedPair(p.id), 'Saved to main chart')} style={removeButtonStyle}>×</button>
+                </div>
+                {open && (
+                  <div style={{ padding: '6px 0 8px 18px', borderBottom: `1px solid ${colors.borderHair}` }}>
+                    {selectedLog.length ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 200, overflowY: 'auto' }}>
+                        {selectedLog.map((entry, k) => (
+                          <div key={k} style={{ display: 'flex', fontSize: 12, color: k === 0 ? colors.text : colors.labelMuted }}>
+                            <span style={{ flex: 1 }}>Table {tableLabel(entry.table)}</span>
+                            <span style={{ color: colors.textFaint }}>
+                              {new Date(entry.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: colors.textDisabled }}>Not shuffled as a pair yet.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
           <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
             <select value={newFixedA} onChange={(e) => setNewFixedA(e.target.value)} style={selectFlexStyle}>
               <option value="">Student…</option>
@@ -453,7 +523,9 @@ export default function AdminPanel({
             </button>
           </div>
         </div>
+        )}
 
+        {!isPairs && (
         <div style={sectionBlockStyle}>
           <div style={sectionLabelStyle}>Rules</div>
           <div style={sectionTitleStyle}>Keep apart</div>
@@ -490,7 +562,10 @@ export default function AdminPanel({
             </button>
           </div>
         </div>
+        )}
 
+        {!isPairs && (
+        <>
         <div style={sectionBlockStyle}>
           <div style={sectionLabelStyle}>Log</div>
           <div style={sectionTitleStyle}>Seating history</div>
@@ -512,6 +587,8 @@ export default function AdminPanel({
             <div style={{ fontSize: 13, color: colors.textDisabled }}>No shuffles yet.</div>
           )}
         </div>
+        </>
+        )}
 
         <div style={sectionBlockStyle}>
           <div style={sectionLabelStyle}>Log</div>
@@ -612,8 +689,27 @@ export default function AdminPanel({
                 const label = state.labelStyle === 'letters' ? String.fromCharCode(65 + i) : String(i + 1);
                 const aIdx = i * 2;
                 const bIdx = i * 2 + 1;
+                const roundOrder = selectedRound.indexOf(i);
+                const isNow = i === selectedNow;
                 return (
-                  <div key={i} style={{ border: `1px solid ${colors.borderSoft}`, borderRadius: 10, padding: 14, background: colors.tableBg }}>
+                  <div
+                    key={i}
+                    style={{
+                      position: 'relative',
+                      border: isNow ? `2px solid ${colors.rotateBlue}` : roundOrder !== -1 ? `1px solid ${colors.pairVisitedBorder}` : `1px solid ${colors.borderSoft}`,
+                      borderRadius: 10,
+                      padding: isNow ? 13 : 14,
+                      background: roundOrder !== -1 ? colors.pairVisitedBg : colors.tableBg
+                    }}
+                  >
+                    {roundOrder !== -1 && (
+                      <span
+                        title={`Visit ${roundOrder + 1} of this round`}
+                        style={{ ...visitBadgeStyle, background: isNow ? colors.rotateBlue : colors.pairVisitedBorder }}
+                      >
+                        {roundOrder + 1}
+                      </span>
+                    )}
                     <div style={{ textAlign: 'center', fontSize: 12, color: colors.textFaint, marginBottom: 10, letterSpacing: '0.04em' }}>
                       Table {label}
                     </div>
@@ -643,14 +739,23 @@ export default function AdminPanel({
               </div>
               ))}
             </div>
+            {!isPairs && (
             <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
               {lines.map((ln) => (
                 <line key={ln.key} x1={ln.x1} y1={ln.y1} x2={ln.x2} y2={ln.y2} stroke={colors.watchLine} strokeWidth={2.5} strokeLinecap="round" />
               ))}
             </svg>
+            )}
           </div>
 
-          {watchedStudent && state.names.indexOf(watchedStudent) !== -1 && (
+          {selectedPair && (
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${colors.borderSoft}`, fontSize: 13, color: colors.labelMuted, textAlign: 'center' }}>
+              <strong style={{ color: colors.text }}>{selectedPair.a} + {selectedPair.b}:</strong> {selectedRound.length} / {freeTableCount} tables
+              this round — numbers show the order they sat there.
+            </div>
+          )}
+
+          {!isPairs && watchedStudent && state.names.indexOf(watchedStudent) !== -1 && (
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${colors.borderSoft}`, fontSize: 13, color: colors.labelMuted }}>
               <strong style={{ color: colors.text }}>{watchedStudent} has sat with:</strong>{' '}
               {(() => {
@@ -660,6 +765,7 @@ export default function AdminPanel({
             </div>
           )}
 
+          {!isPairs && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20 }}>
             <span style={{ fontSize: 13, color: colors.labelMuted }}>Watching:</span>
             <select value={watchedStudent} onChange={(e) => setWatchedStudent(e.target.value)} style={selectPlainStyle}>
@@ -669,6 +775,7 @@ export default function AdminPanel({
               ))}
             </select>
           </div>
+          )}
         </div>
       </div>
       </div>
@@ -752,6 +859,7 @@ function formatAction(action: string): string {
     shuffle: 'ran a random shuffle',
     rotate_seats: 'rotated seats',
     shuffle_pairs: 'shuffled fixed pairs',
+    set_mode: 'switched seating mode',
     add_fixed_pair: 'added a fixed pair',
     remove_fixed_pair: 'removed a fixed pair',
     clear_history: 'cleared seating history',
@@ -775,6 +883,55 @@ const sectionLabelStyle: CSSProperties = {
   textTransform: 'uppercase',
   color: colors.textMuted,
   marginBottom: 2
+};
+
+const modeToggleStyle: CSSProperties = {
+  display: 'flex',
+  padding: 3,
+  gap: 3,
+  borderRadius: 9,
+  background: colors.borderHair,
+  border: `1px solid ${colors.borderSoft}`
+};
+
+const modeButtonStyle: CSSProperties = {
+  flex: 1,
+  padding: '8px 0',
+  border: 'none',
+  borderRadius: 7,
+  fontSize: 13,
+  cursor: 'pointer'
+};
+
+const pairRowButtonStyle: CSSProperties = {
+  flex: 1,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  border: 'none',
+  background: 'none',
+  padding: 0,
+  font: 'inherit',
+  color: 'inherit',
+  textAlign: 'left',
+  cursor: 'pointer'
+};
+
+const visitBadgeStyle: CSSProperties = {
+  position: 'absolute',
+  top: -9,
+  right: -9,
+  minWidth: 20,
+  height: 20,
+  padding: '0 5px',
+  borderRadius: 10,
+  color: '#fff',
+  fontSize: 11,
+  fontWeight: 600,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  boxSizing: 'border-box'
 };
 
 const sectionTitleStyle: CSSProperties = { fontSize: 15, fontWeight: 600, marginBottom: 4 };
