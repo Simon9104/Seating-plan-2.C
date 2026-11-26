@@ -241,6 +241,7 @@ export default function AdminPanel({
   const pairNames = state.names.filter(Boolean);
   const watchOptions = state.names.filter(Boolean);
   const fixedPairs = state.fixedPairs || [];
+  const freeTableCount = Array.from({ length: 15 }, (_, t) => t).filter((t) => !lockedSlots[t * 2] && !lockedSlots[t * 2 + 1]).length;
   const unpairedNames = pairNames.filter((n) => fixedPairs.every((p) => p.a !== n && p.b !== n));
   const isSpotlight = (n: string) => !!n && n.trim().toLowerCase() === 'simon';
 
@@ -413,10 +414,16 @@ export default function AdminPanel({
         <div style={sectionBlockStyle}>
           <div style={sectionLabelStyle}>Rules</div>
           <div style={sectionTitleStyle}>Fixed pairs</div>
-          <div style={sectionHintStyle}>These two always share a table. "Shuffle pairs" moves each pair together to a random table.</div>
+          <div style={sectionHintStyle}>
+            These two always share a table. "Shuffle pairs" moves each pair together to a random table it hasn't sat at
+            yet this round — keep-apart rules and tablemate history are ignored, locked seats stay put.
+          </div>
           {fixedPairs.map((p) => (
             <div key={p.id} style={ruleRowStyle}>
               <span style={{ flex: 1 }}>{p.a} + {p.b}</span>
+              <span title="Tables this pair has sat at in the current round" style={{ fontSize: 12, color: colors.textFaint, fontVariantNumeric: 'tabular-nums' }}>
+                {(state.pairTables?.[p.a < p.b ? p.a + '|' + p.b : p.b + '|' + p.a] || []).length} / {freeTableCount}
+              </span>
               <button onClick={() => run(() => api.removeFixedPair(p.id), 'Saved to main chart')} style={removeButtonStyle}>×</button>
             </div>
           ))}

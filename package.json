@@ -9,6 +9,7 @@
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview",
     "setup:admin": "node scripts/setup-admin.mjs",
+    "test:pairs": "tsx scripts/test-pair-shuffle.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p api/tsconfig.json"
   },
   "dependencies": {

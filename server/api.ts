@@ -267,12 +267,15 @@ export default async (req: Request, context: RequestContext): Promise<Response> 
 
       if (path === '/admin/shuffle-pairs' && method === 'POST') {
         let placed = 0;
+        let newRounds = 0;
         const state = await updateState(db, adminUsername, (s) => {
           const result = shufflePairs(s);
           placed = result.placedPairs;
-          return { ...s, seats: result.seats, pairHistory: result.pairHistory, history: result.history };
+          newRounds = result.newRounds;
+          return { ...s, seats: result.seats, history: result.history, pairTables: result.pairTables };
         });
-        await logAction(db, adminUsername, 'shuffle_pairs', `${placed} pair${placed === 1 ? '' : 's'} moved together`, ip);
+        const details = `${placed} pair${placed === 1 ? '' : 's'} moved together` + (newRounds ? `, ${newRounds} started a new round` : '');
+        await logAction(db, adminUsername, 'shuffle_pairs', details, ip);
         return json(200, adminStateView(state));
       }
 
@@ -303,7 +306,7 @@ export default async (req: Request, context: RequestContext): Promise<Response> 
         const state = await updateState(db, adminUsername, (s) => {
           const pair = (s.fixedPairs || []).find((p) => p.id === id);
           if (pair) label = `${pair.a} + ${pair.b}`;
-          return { ...s, fixedPairs: removeFixedPair(s, id) };
+          return { ...s, ...removeFixedPair(s, id) };
         });
         await logAction(db, adminUsername, 'remove_fixed_pair', label || `pair ${id}`, ip);
         return json(200, adminStateView(state));
@@ -316,7 +319,7 @@ export default async (req: Request, context: RequestContext): Promise<Response> 
       }
 
       if (path === '/admin/clear-history' && method === 'POST') {
-        const state = await updateState(db, adminUsername, (s) => ({ ...s, pairHistory: {}, history: [] }));
+        const state = await updateState(db, adminUsername, (s) => ({ ...s, pairHistory: {}, history: [], pairTables: {} }));
         await logAction(db, adminUsername, 'clear_history', null, ip);
         return json(200, adminStateView(state));
       }

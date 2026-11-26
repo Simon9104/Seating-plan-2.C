@@ -38,6 +38,9 @@ export interface SeatingState {
   avoidPairs: AvoidPair[];
   // Optional: states saved before this field existed don't have it.
   fixedPairs?: FixedPair[];
+  // Pair mode: tables (0-based) each fixed pair has sat at in its current
+  // round, keyed by pairKey(a, b). Optional for the same reason.
+  pairTables?: Record<string, number[]>;
   pairHistory: Record<string, boolean>;
   history: HistoryEntry[];
   defaultSeats: string[] | null;

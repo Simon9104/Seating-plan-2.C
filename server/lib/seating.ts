@@ -24,6 +24,7 @@ export function emptyState(): SeatingState {
     rules: [],
     avoidPairs: [],
     fixedPairs: [],
+    pairTables: {},
     pairHistory: {},
     history: [],
     defaultSeats: null,
@@ -163,66 +164,162 @@ function activePairs(state: SeatingState): FixedPair[] {
   );
 }
 
-// Moves every fixed pair, as a unit, to a random table (random A/B order);
-// everyone else fills the remaining free seats at random. Locked seats stay.
+// Picks a table for every pair so that pair i only ever gets a table in
+// allowed[i], and no two pairs share a table. Returns tables[] positions per
+// pair, or null if no such assignment exists.
+//
+// The result is exactly uniform over all valid assignments: count[mask] is the
+// number of ways to finish seating pairs popcount(mask)..n-1 when the tables in
+// `mask` are already taken, and each step picks a table with probability
+// proportional to how many complete assignments it leads to. Tables are at
+// most 15, so there are at most 2^15 masks.
+export function assignPairTables(tableCount: number, allowed: number[][]): number[] | null {
+  const n = allowed.length;
+  if (n === 0) return [];
+  if (n > tableCount) return null;
+  const allowedMask = allowed.map((ts) => ts.reduce((m, t) => m | (1 << t), 0));
+  const full = 1 << tableCount;
+  const popcount = new Uint8Array(full);
+  for (let m = 1; m < full; m++) popcount[m] = popcount[m >> 1] + (m & 1);
+  // Supersets have larger values, so filling from the top down means every
+  // count[mask | bit] is ready before count[mask] needs it.
+  const count = new Float64Array(full);
+  for (let mask = full - 1; mask >= 0; mask--) {
+    const i = popcount[mask];
+    if (i > n) continue;
+    if (i === n) {
+      count[mask] = 1;
+      continue;
+    }
+    let free = allowedMask[i] & ~mask;
+    let total = 0;
+    while (free) {
+      const bit = free & -free;
+      total += count[mask | bit];
+      free ^= bit;
+    }
+    count[mask] = total;
+  }
+  if (count[0] === 0) return null;
+
+  const result: number[] = [];
+  let mask = 0;
+  for (let i = 0; i < n; i++) {
+    let r = Math.random() * count[mask];
+    let pick = -1;
+    for (const t of allowed[i]) {
+      if (mask & (1 << t)) continue;
+      const w = count[mask | (1 << t)];
+      if (w === 0) continue;
+      pick = t;
+      if (r < w) break;
+      r -= w;
+    }
+    result.push(pick);
+    mask |= 1 << pick;
+  }
+  return result;
+}
+
+// Pair mode: moves every fixed pair, as a unit, to a random table it hasn't
+// sat at yet in the current round (random A/B order). Once a pair has sat at
+// every free table, it starts a new round. Keep-apart rules and tablemate
+// history are ignored here; locked seats stay where they are. Everyone not in
+// a pair fills the remaining free seats at random.
 export function shufflePairs(state: SeatingState): {
   seats: string[];
-  pairHistory: Record<string, boolean>;
   history: HistoryEntry[];
+  pairTables: Record<string, number[]>;
   placedPairs: number;
+  newRounds: number;
 } {
   const lockedIndexes = state.rules.map((r) => slotIndex(r.table, r.seat));
   const lockedNames = state.rules.map((r) => r.name);
-  const pairs = activePairs(state);
   const freeTables: number[] = [];
   for (let t = 0; t < TABLE_COUNT; t++) {
     if (lockedIndexes.indexOf(t * 2) === -1 && lockedIndexes.indexOf(t * 2 + 1) === -1) freeTables.push(t);
   }
+  // More pairs than free tables: a random few have to sit as singles this time.
+  const pairs = shuffled(activePairs(state)).slice(0, freeTables.length);
+  const oldPairTables = state.pairTables || {};
 
-  // Prefer an arrangement where no pair stays at the table it's at now.
-  let best: string[] | null = null;
-  let bestStayed = Infinity;
-  let placedPairs = 0;
-  for (let attempt = 0; attempt < 50 && bestStayed > 0; attempt++) {
-    const seats = new Array(SEAT_COUNT).fill('');
-    state.rules.forEach((r) => {
-      seats[slotIndex(r.table, r.seat)] = r.name;
-    });
-    const tables = shuffled(freeTables);
-    const placed: string[] = [];
-    let stayed = 0;
-    shuffled(pairs).forEach((p) => {
-      const t = tables.shift();
-      if (t === undefined) return;
-      const [first, second] = Math.random() < 0.5 ? [p.a, p.b] : [p.b, p.a];
-      seats[t * 2] = first;
-      seats[t * 2 + 1] = second;
-      placed.push(p.a, p.b);
-      if (Math.floor(state.seats.indexOf(p.a) / 2) === t) stayed++;
-    });
-    const pool = shuffled(state.names.filter((n) => n && lockedNames.indexOf(n) === -1 && placed.indexOf(n) === -1));
-    let p = 0;
-    for (let i = 0; i < SEAT_COUNT; i++) {
-      if (lockedIndexes.indexOf(i) !== -1 || seats[i]) continue;
-      seats[i] = pool[p] || '';
-      p++;
+  // Tables each pair has already used this round, including the one it sits at
+  // right now (so a manual swap still counts).
+  const currentTable = (p: FixedPair) => {
+    const ia = state.seats.indexOf(p.a);
+    const ib = state.seats.indexOf(p.b);
+    return ia !== -1 && Math.floor(ia / 2) === Math.floor(ib / 2) ? Math.floor(ia / 2) : -1;
+  };
+  let newRounds = 0;
+  const visited = pairs.map((p) => {
+    const cur = currentTable(p);
+    const seen = new Set((oldPairTables[pairKey(p.a, p.b)] || []).filter((t) => freeTables.indexOf(t) !== -1));
+    if (cur !== -1) seen.add(cur);
+    if (seen.size >= freeTables.length) {
+      newRounds++;
+      return cur !== -1 ? new Set([cur]) : new Set<number>();
     }
-    if (stayed < bestStayed) {
-      bestStayed = stayed;
-      best = seats;
-      placedPairs = placed.length / 2;
+    return seen;
+  });
+  const allowedFor = (i: number) => freeTables.map((t, k) => (visited[i].has(t) ? -1 : k)).filter((k) => k !== -1);
+
+  let assignment = assignPairTables(freeTables.length, pairs.map((_, i) => allowedFor(i)));
+  // No valid assignment (e.g. after manual moves): restart the round for the
+  // most constrained pair and try again, until one exists.
+  while (!assignment) {
+    const open = pairs.map((_, i) => i).filter((i) => visited[i].size > 1 || (visited[i].size === 1 && currentTable(pairs[i]) === -1));
+    if (!open.length) {
+      assignment = assignPairTables(freeTables.length, pairs.map(() => freeTables.map((_, k) => k))) as number[];
+      break;
     }
+    const tightest = Math.max(...open.map((i) => visited[i].size));
+    const candidates = shuffled(open.filter((i) => visited[i].size === tightest));
+    const i = candidates[0];
+    const cur = currentTable(pairs[i]);
+    visited[i] = cur !== -1 ? new Set([cur]) : new Set<number>();
+    newRounds++;
+    assignment = assignPairTables(freeTables.length, pairs.map((_, j) => allowedFor(j)));
   }
 
-  const seats = best as string[];
-  const pairHistory = { ...state.pairHistory };
-  tablematePairs(seats).forEach((key) => {
-    pairHistory[key] = true;
+  const seats = new Array(SEAT_COUNT).fill('');
+  state.rules.forEach((r) => {
+    seats[slotIndex(r.table, r.seat)] = r.name;
   });
+  const pairTables: Record<string, number[]> = {};
+  const placed: string[] = [];
+  pairs.forEach((p, i) => {
+    const t = freeTables[assignment![i]];
+    const [first, second] = Math.random() < 0.5 ? [p.a, p.b] : [p.b, p.a];
+    seats[t * 2] = first;
+    seats[t * 2 + 1] = second;
+    placed.push(p.a, p.b);
+    pairTables[pairKey(p.a, p.b)] = Array.from(visited[i]).concat([t]);
+  });
+
+  // Singles: random, preferring that nobody keeps their current seat.
+  const singles = state.names.filter((n) => n && lockedNames.indexOf(n) === -1 && placed.indexOf(n) === -1);
+  const openSeats: number[] = [];
+  for (let i = 0; i < SEAT_COUNT; i++) {
+    if (lockedIndexes.indexOf(i) === -1 && !seats[i]) openSeats.push(i);
+  }
+  let bestPool: string[] = [];
+  let bestStayed = Infinity;
+  for (let attempt = 0; attempt < 100 && bestStayed > 0; attempt++) {
+    const pool = shuffled(singles);
+    const stayed = openSeats.filter((seat, k) => pool[k] && state.seats[seat] === pool[k]).length;
+    if (stayed < bestStayed) {
+      bestStayed = stayed;
+      bestPool = pool;
+    }
+  }
+  openSeats.forEach((seat, k) => {
+    seats[seat] = bestPool[k] || '';
+  });
+
   const historyEntry: HistoryEntry = { id: Date.now(), timestamp: Date.now(), seats: seats.slice() };
   const history = [historyEntry, ...state.history].slice(0, MAX_HISTORY);
 
-  return { seats, pairHistory, history, placedPairs };
+  return { seats, history, pairTables, placedPairs: pairs.length, newRounds };
 }
 
 // A student can belong to at most one fixed pair.
@@ -234,8 +331,11 @@ export function addFixedPair(state: SeatingState, a: string, b: string): FixedPa
   return pairs.concat([{ id: Date.now(), a, b }]);
 }
 
-export function removeFixedPair(state: SeatingState, id: number): FixedPair[] {
-  return (state.fixedPairs || []).filter((p) => p.id !== id);
+export function removeFixedPair(state: SeatingState, id: number): { fixedPairs: FixedPair[]; pairTables: Record<string, number[]> } {
+  const pair = (state.fixedPairs || []).find((p) => p.id === id);
+  const pairTables = { ...(state.pairTables || {}) };
+  if (pair) delete pairTables[pairKey(pair.a, pair.b)];
+  return { fixedPairs: (state.fixedPairs || []).filter((p) => p.id !== id), pairTables };
 }
 
 export function addRule(state: SeatingState, name: string, table: number, seat: Seat): { rules: Rule[]; seats: string[] } {
